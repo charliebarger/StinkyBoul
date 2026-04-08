@@ -1,81 +1,238 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CPW Mock Site Demo</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --bg: #f5f7fb;
-        --card: #ffffff;
-        --text: #162456;
-        --muted: #52607a;
-        --border: #d6dceb;
-        --accent: #2342a5;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(180deg, #eef3ff 0%, var(--bg) 100%);
-        color: var(--text);
-      }
-
-      main {
-        width: min(760px, calc(100% - 32px));
-        margin: 40px auto;
-        padding: 32px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        box-shadow: 0 14px 40px rgba(18, 36, 90, 0.08);
-      }
-
-      h1, h2 {
-        margin: 0 0 16px;
-      }
-
-      h1 {
-        font-size: 32px;
-      }
-
-      p, li {
-        color: var(--muted);
-        line-height: 1.6;
-      }
-
-      a {
-        color: var(--accent);
-      }
-
-      code {
-        font-family: monospace;
-      }
-    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPW OTC Elk Mock</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main>
-      <h1>CPW Mock Site Demo</h1>
-      <p>
-        This repository includes a local mock CPW site for testing the
-        StinkyBoul extension. The mock site is intended for development and demo
-        use.
-      </p>
+    <div class="site-links" aria-label="Site links">
+      <div class="site-links__inner">
+        <a href="../">StinkyBoul Docs</a>
+        <span>|</span>
+        <a href="../privacy-policy/">Privacy Policy</a>
+      </div>
+    </div>
 
-      <h2>How to run it locally</h2>
-      <p>From the repo root, run:</p>
-      <p><code>npm run mock-site</code></p>
-      <p>Then open <code>http://localhost:4173</code>.</p>
+    <div class="topbar">
+      <div class="topbar__inner">
+        <span>Colorado.gov</span>
+        <span>|</span>
+        <span>Help/FAQ</span>
+      </div>
+    </div>
 
-      <h2>Files</h2>
-      <ul>
-        <li><a href="https://github.com/charliebarger/StinkyBoul/tree/main/mock-site">Mock site source in GitHub</a></li>
-      </ul>
+    <header class="brand-header">
+      <div class="brand-header__inner">
+        <div class="brand-lockup">
+          <div class="brand-wordmark">Colorado Parks and Wildlife</div>
+        </div>
+        <div class="account-pill">Welcome, Charles &nbsp; My Account | Sign Out</div>
+      </div>
+    </header>
+
+    <nav class="nav-bar" aria-label="Primary">
+      <div class="nav-bar__inner">
+        <a href="./">Home</a>
+        <a href="./">Go Hunting &amp; Fishing</a>
+        <a href="./">Visit A Park</a>
+        <a href="./">Boats, OHVs &amp; Snowmobiles</a>
+        <a href="./">E-Store</a>
+        <a href="./">Donate</a>
+      </div>
+    </nav>
+
+    <main class="page">
+      <div class="breadcrumbs">
+        <a href="./">Purchase Privileges</a>
+        <span>&gt;</span>
+        <span>OTC UnlimitedPrivileges Year: 2026 Available Hunts</span>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel panel--results panel--full">
+          <div class="panel__header">Elk</div>
+          <div class="panel__body panel__body--result">
+            <div class="result-card">
+              <div class="result-card__title">Find OTC Unlimited Hunt</div>
+              <label class="field-group field-group--tight">
+                <span class="field-label">Hunt Code</span>
+                <div class="hunt-code-row">
+                  <input
+                    id="application1.code_species"
+                    aria-label="Species"
+                    value="E"
+                  />
+                  <input
+                    id="application1.code_speciessubtype"
+                    aria-label="Species subtype"
+                    value=""
+                  />
+                  <input
+                    id="application1.code_huntlocation"
+                    aria-label="Hunt location"
+                    value=""
+                  />
+                  <input
+                    id="application1.code_dateperiod"
+                    aria-label="Date period"
+                    value=""
+                  />
+                  <input
+                    id="application1.code_weapon"
+                    aria-label="Weapon"
+                    value=""
+                  />
+                </div>
+              </label>
+              <div class="captcha-card">
+                <label class="captcha-card__label" for="captcha-check">
+                  <input
+                    id="captcha-check"
+                    class="captcha-card__checkbox"
+                    type="checkbox"
+                  />
+                  <span class="captcha-card__box" aria-hidden="true"></span>
+                  <span class="captcha-card__text">I'm not a robot</span>
+                </label>
+                <div class="captcha-card__brand">
+                  <div class="captcha-card__title">reCAPTCHA</div>
+                  <div class="captcha-card__meta">Privacy - Terms</div>
+                </div>
+              </div>
+              <div class="result-card__actions">
+                <button
+                  class="purchase-button"
+                  id="submit"
+                  name="submit"
+                  disabled
+                  type="button"
+                  value="Confirm Choices"
+                >
+                  Purchase
+                </button>
+              </div>
+              <div class="result-feedback" id="result-feedback" aria-live="polite">
+                <div class="result-feedback__hint">
+                  Enter a hunt code and click Purchase to simulate the CPW flow.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
+
+    <script>
+      const captchaCheck = document.getElementById('captcha-check');
+      const submitButton = document.getElementById('submit');
+      const feedback = document.getElementById('result-feedback');
+      const fields = {
+        species: document.getElementById('application1.code_species'),
+        speciessubtype: document.getElementById('application1.code_speciessubtype'),
+        huntlocation: document.getElementById('application1.code_huntlocation'),
+        dateperiod: document.getElementById('application1.code_dateperiod'),
+        weapon: document.getElementById('application1.code_weapon'),
+      };
+
+      const failingCodes = new Set(['M012O1A', 'F042O1A']);
+
+      const successfulCodes = new Set([
+        'M012O1R',
+        'M069O1R',
+        'F110O4R',
+        'F110O2R',
+        'F110O4A',
+      ]);
+      const choiceDetailsLabel = ['Choice', 'Details'].join(' ');
+
+      function syncSubmitState() {
+        const isVerified = Boolean(captchaCheck?.checked);
+
+        submitButton.disabled = !isVerified;
+        submitButton.classList.toggle('disabled', !isVerified);
+      }
+
+      function clearOutcome() {
+        const notSet = document.querySelector('[name="NOTSET"]');
+        const choiceDetails = document.getElementById('choice-details');
+        const failureMessage = document.getElementById('notset-message');
+
+        notSet?.remove();
+        choiceDetails?.remove();
+        failureMessage?.remove();
+      }
+
+      function renderFailure(code) {
+        clearOutcome();
+        const notSet = document.createElement('input');
+        notSet.type = 'hidden';
+        notSet.name = 'NOTSET';
+        notSet.id = 'NOTSET';
+        feedback.appendChild(notSet);
+
+        const message = document.createElement('div');
+        message.id = 'notset-message';
+        message.className = 'result-feedback__status result-feedback__status--failure';
+        message.textContent = `Tag not available for code ${code || 'UNKNOWN'}.`;
+        feedback.appendChild(message);
+      }
+
+      function renderSuccess(code) {
+        clearOutcome();
+        const details = document.createElement('div');
+        details.className = 'choice-details';
+        details.id = 'choice-details';
+        details.innerHTML = `
+          <div class="choice-details__label">${choiceDetailsLabel}</div>
+          <div class="choice-details__value">Code ${code} matched an available elk tag.</div>
+        `;
+        feedback.appendChild(details);
+      }
+
+      submitButton?.addEventListener('click', () => {
+        clearOutcome();
+        submitButton.classList.add('disabled');
+        submitButton.disabled = true;
+
+        const enteredCode = `${fields.species?.value ?? ''}${fields.speciessubtype?.value ?? ''}${fields.huntlocation?.value ?? ''}${fields.dateperiod?.value ?? ''}${fields.weapon?.value ?? ''}`
+          .replace(/\s+/g, '')
+          .toUpperCase();
+        const normalizedCode = enteredCode.slice(1);
+
+        window.setTimeout(() => {
+          syncSubmitState();
+
+          if (failingCodes.has(normalizedCode)) {
+            renderFailure(enteredCode);
+            return;
+          }
+
+          if (successfulCodes.has(normalizedCode)) {
+            renderSuccess(enteredCode);
+            return;
+          }
+
+          renderFailure(enteredCode);
+        }, 700);
+      });
+
+      captchaCheck?.addEventListener('click', (event) => {
+        if (!event.isTrusted) {
+          captchaCheck.checked = false;
+        }
+
+        syncSubmitState();
+      });
+
+      syncSubmitState();
+    </script>
   </body>
-  </html>
+</html>
