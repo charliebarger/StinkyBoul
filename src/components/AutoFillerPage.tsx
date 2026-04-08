@@ -1,5 +1,23 @@
 import { useRef, useState } from 'react';
 
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 import { HuntButton } from './HuntButton';
 import { HuntCode } from './HuntCode';
 import { HuntIcon } from './HuntIcon';
@@ -41,11 +59,94 @@ const EMPTY_CODE: Omit<HuntCodeSeed, 'id'> = {
   mobileCode: '',
 };
 
+export function reorderHuntCodes(
+  codes: HuntCodeSeed[],
+  activeId: number,
+  overId?: number,
+) {
+  if (!overId || activeId === overId) {
+    return codes;
+  }
+
+  const oldIndex = codes.findIndex((code) => code.id === activeId);
+  const newIndex = codes.findIndex((code) => code.id === overId);
+
+  if (oldIndex === -1 || newIndex === -1) {
+    return codes;
+  }
+
+  return arrayMove(codes, oldIndex, newIndex);
+}
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function SortableCodeCard({
+  code,
+  index,
+  isEditing,
+  onDelete,
+}: {
+  code: HuntCodeSeed;
+  index: number;
+  isEditing: boolean;
+  onDelete: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: code.id,
+    disabled: !isEditing,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cx(isDragging && 'z-10')}
+    >
+      <HuntCode
+        desktopSegments={code.desktopSegments}
+        dragHandleProps={
+          isEditing
+            ? {
+                ...attributes,
+                ...listeners,
+                'aria-label': `Reorder hunt code ${index + 1}`,
+              }
+            : undefined
+        }
+        indexLabel={String(index + 1)}
+        mobileCode={code.mobileCode}
+        onDelete={onDelete}
+        state={isDragging ? 'dragging' : isEditing ? 'editing' : 'default'}
+      />
+    </div>
+  );
+}
+
 export function AutoFillerPage() {
   const nextCodeIdRef = useRef(INITIAL_CODES.length + 1);
   const [codes, setCodes] = useState(INITIAL_CODES);
   const [isEditing, setIsEditing] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   function handleAddCode() {
     setCodes((currentCodes) => [
@@ -61,13 +162,20 @@ export function AutoFillerPage() {
     setCodes((currentCodes) => currentCodes.filter((code) => code.id !== id));
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const activeId = Number(event.active.id);
+    const overId = event.over ? Number(event.over.id) : undefined;
+
+    setCodes((currentCodes) => reorderHuntCodes(currentCodes, activeId, overId));
+  }
+
   return (
     <main className='relative min-h-screen overflow-hidden bg-[#f9fafb] text-hunt-text'>
-      <div className='pointer-events-none absolute inset-y-0 left-[-119px] w-[239px] overflow-hidden opacity-60'>
+      <div className='pointer-events-none absolute inset-0 overflow-hidden opacity-60'>
         <img
           alt=''
           aria-hidden='true'
-          className='absolute inset-y-0 left-0 h-full max-w-none object-cover object-left'
+          className='absolute inset-0 h-full w-full object-cover'
           src={BACKGROUND_ART_URL}
         />
       </div>
@@ -103,19 +211,28 @@ export function AutoFillerPage() {
               </p>
             </div>
 
-            <div className='flex flex-col gap-4 items-start justify-start'>
-              {codes.map((code, index) => (
-                <HuntCode
-                  key={code.id}
-                  className='w-full'
-                  desktopSegments={code.desktopSegments}
-                  indexLabel={String(index + 1)}
-                  mobileCode={code.mobileCode}
-                  onDelete={() => handleDeleteCode(code.id)}
-                  state={isEditing ? 'editing' : 'default'}
-                />
-              ))}
-            </div>
+            <DndContext
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              sensors={sensors}
+            >
+              <SortableContext
+                items={codes.map((code) => code.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className='flex flex-col items-start gap-4'>
+                  {codes.map((code, index) => (
+                    <SortableCodeCard
+                      key={code.id}
+                      code={code}
+                      index={index}
+                      isEditing={isEditing}
+                      onDelete={() => handleDeleteCode(code.id)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
 
             <div className='flex items-center justify-between pb-6 pt-8'>
               <div className='flex items-center gap-[10px]'>

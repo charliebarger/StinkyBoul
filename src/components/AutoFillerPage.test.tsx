@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { AutoFillerPage } from './AutoFillerPage';
+import { AutoFillerPage, reorderHuntCodes } from './AutoFillerPage';
 
 describe('AutoFillerPage', () => {
   it('renders the branded main page content', () => {
@@ -19,6 +19,7 @@ describe('AutoFillerPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit hunt codes' }));
 
+    expect(screen.getByLabelText('Reorder hunt code 1')).toBeInTheDocument();
     expect(
       screen.getAllByRole('button', { name: 'Delete hunt code' }),
     ).toHaveLength(4);
@@ -44,5 +45,19 @@ describe('AutoFillerPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run Program' }));
 
     expect(screen.getByText('Running code {1}...')).toBeInTheDocument();
+  });
+
+  it('reorders the hunt codes by id', () => {
+    const reordered = reorderHuntCodes(
+      [
+        { id: 1, desktopSegments: ['E', 'M', '012', 'O1', 'A'], mobileCode: 'EM012O1A' },
+        { id: 2, desktopSegments: ['E', 'F', '042', 'O1', 'A'], mobileCode: 'EF042O1A' },
+        { id: 3, desktopSegments: ['E', 'M', '012', 'O1', 'R'], mobileCode: 'EM012O1R' },
+      ],
+      3,
+      1,
+    );
+
+    expect(reordered.map((code) => code.id)).toEqual([3, 1, 2]);
   });
 });

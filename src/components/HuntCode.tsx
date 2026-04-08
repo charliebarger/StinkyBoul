@@ -11,10 +11,9 @@ type HuntCodeState =
   | 'failure'
   | 'trying';
 
-type HuntCodeLayout = 'compact' | 'condensed' | 'regular';
-
 export type HuntCodeProps = HTMLAttributes<HTMLDivElement> & {
   state?: HuntCodeState;
+  dragHandleProps?: HTMLAttributes<HTMLDivElement>;
   indexLabel?: string;
   desktopSegments?: readonly string[];
   mobileCode?: string;
@@ -25,33 +24,10 @@ const DEFAULT_SEGMENTS = ['E', 'M', '012', 'O1', 'R'] as const;
 const DEFAULT_SEGMENT_LENGTHS = DEFAULT_SEGMENTS.map(
   (segment) => segment.length,
 );
-const DEFAULT_MOBILE_CODE_LENGTH = DEFAULT_SEGMENT_LENGTHS.reduce(
-  (total, length) => total + length,
-  0,
-);
-const DESKTOP_REGULAR_GAP = 8;
-const DESKTOP_CONDENSED_GAP = 6;
 
-function getDesktopSegmentWidth(maxLength: number, condensed = false) {
-  if (condensed) {
-    return maxLength >= 3 ? 50 : maxLength === 2 ? 42 : 34;
-  }
-
-  return maxLength >= 3 ? 60 : maxLength === 2 ? 48 : 40;
+function getDesktopSegmentWidth(maxLength: number) {
+  return `calc(${maxLength}ch + 18px)`;
 }
-
-const DESKTOP_REGULAR_ROW_WIDTH =
-  DEFAULT_SEGMENT_LENGTHS.reduce(
-    (total, length) => total + getDesktopSegmentWidth(length),
-    0,
-  ) +
-  DESKTOP_REGULAR_GAP * (DEFAULT_SEGMENT_LENGTHS.length - 1);
-const DESKTOP_CONDENSED_ROW_WIDTH =
-  DEFAULT_SEGMENT_LENGTHS.reduce(
-    (total, length) => total + getDesktopSegmentWidth(length, true),
-    0,
-  ) +
-  DESKTOP_CONDENSED_GAP * (DEFAULT_SEGMENT_LENGTHS.length - 1);
 
 const STATE_LABELS: Record<HuntCodeState, string> = {
   default: 'Default',
@@ -93,38 +69,28 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function resolveDesktopSegmentValues(segments?: readonly string[]) {
-  return DEFAULT_SEGMENT_LENGTHS.map((segmentLength, index) =>
-    (segments?.[index] ?? '').slice(0, segmentLength),
-  );
-}
+function resolveDesktopSegmentValues(
+  desktopSegments?: readonly string[],
+  mobileCode?: string,
+) {
+  if (desktopSegments) {
+    return DEFAULT_SEGMENT_LENGTHS.map((segmentLength, index) =>
+      (desktopSegments[index] ?? '').slice(0, segmentLength),
+    );
+  }
 
-function flattenDesktopSegmentValues(segments: readonly string[]) {
-  return segments.join('');
-}
-
-function resolveDesktopValuesFromCode(code: string) {
   let cursor = 0;
+  const source = mobileCode ?? '';
 
   return DEFAULT_SEGMENT_LENGTHS.map((segmentLength) => {
-    const nextSegment = code.slice(cursor, cursor + segmentLength);
+    const nextSegment = source.slice(cursor, cursor + segmentLength);
     cursor += segmentLength;
     return nextSegment;
   });
 }
 
-function resolveCodeValues(
-  desktopSegments?: readonly string[],
-  mobileCode?: string,
-) {
-  const desktopValues = desktopSegments
-    ? resolveDesktopSegmentValues(desktopSegments)
-    : resolveDesktopValuesFromCode(mobileCode ?? '');
-
-  return {
-    desktopValues,
-    mobileValue: mobileCode ?? flattenDesktopSegmentValues(desktopValues),
-  };
+function flattenDesktopSegmentValues(segments: readonly string[]) {
+  return segments.join('');
 }
 
 function InfoChip({
@@ -240,8 +206,6 @@ function DeleteButton({
 
 interface InputBoxProps {
   ariaLabel: string;
-  compact?: boolean;
-  condensed?: boolean;
   maxLength: number;
   onChange?: (value: string) => void;
   inputRef?: (node: HTMLInputElement | null) => void;
@@ -252,8 +216,6 @@ interface InputBoxProps {
 
 function InputBox({
   ariaLabel,
-  compact = false,
-  condensed = false,
   inputRef,
   maxLength,
   onChange,
@@ -261,11 +223,6 @@ function InputBox({
   readOnly = false,
   value,
 }: InputBoxProps) {
-  const compactWidth = `${Math.max(maxLength + 2.2, 8)}ch`;
-  const widthStyle = compact
-    ? { width: compactWidth }
-    : { width: getDesktopSegmentWidth(maxLength, condensed) };
-
   return (
     <input
       ref={inputRef}
@@ -276,18 +233,12 @@ function InputBox({
       readOnly={readOnly}
       spellCheck={false}
       tabIndex={readOnly ? -1 : undefined}
-      style={widthStyle}
+      style={{ width: getDesktopSegmentWidth(maxLength) }}
       className={cx(
-        'rounded-[6px] border border-hunt-border bg-hunt-panel text-center font-medium text-hunt-text outline-none appearance-none',
-        compact
-          ? 'h-[40px] px-[10px] text-[14px] leading-none'
-          : condensed
-            ? 'h-[34px] px-0 text-[13px] leading-[1.1]'
-            : 'h-[34px] px-0 text-[14px] leading-[1.1]',
+        'h-[34px] shrink-0 appearance-none rounded-[6px] border border-hunt-border bg-hunt-panel px-[4px] text-center text-[14px] font-medium leading-[1.1] text-hunt-text outline-none',
         !readOnly &&
           'focus:border-hunt-blueInk focus:ring-2 focus:ring-hunt-blue/70',
         readOnly && 'pointer-events-none cursor-default select-none',
-        compact ? 'min-w-0' : 'shrink-0',
       )}
       value={value}
       onChange={(event) => onChange?.(event.target.value)}
@@ -298,6 +249,7 @@ function InputBox({
 
 export function HuntCode({
   className,
+  dragHandleProps,
   state = 'default',
   indexLabel = '1',
   desktopSegments,
@@ -309,76 +261,26 @@ export function HuntCode({
   const isEditable = state === 'default' || state === 'editing';
   const showsDeleteAction = state === 'editing' || state === 'dragging';
   const a11yLabel = `${STATE_LABELS[state]} hunt code`;
-  const layoutRef = useRef<HTMLDivElement | null>(null);
   const desktopInputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const [layoutMode, setLayoutMode] = useState<HuntCodeLayout>('regular');
-  const [desktopValues, setDesktopValues] = useState(
-    () => resolveCodeValues(desktopSegments, mobileCode).desktopValues,
+  const [desktopValues, setDesktopValues] = useState(() =>
+    resolveDesktopSegmentValues(desktopSegments, mobileCode),
   );
-  const [mobileValue, setMobileValue] = useState(
-    () => resolveCodeValues(desktopSegments, mobileCode).mobileValue,
-  );
+  const { className: dragHandleClassName, ...restDragHandleProps } =
+    dragHandleProps ?? {};
 
   useEffect(() => {
-    const nextValues = resolveCodeValues(desktopSegments, mobileCode);
-    setDesktopValues(nextValues.desktopValues);
-    setMobileValue(nextValues.mobileValue);
+    setDesktopValues(resolveDesktopSegmentValues(desktopSegments, mobileCode));
   }, [desktopSegments, mobileCode]);
-
-  useEffect(() => {
-    const node = layoutRef.current;
-
-    if (!node) {
-      return;
-    }
-
-    const measure = () => {
-      if (node.clientWidth === 0) {
-        return;
-      }
-
-      if (node.clientWidth >= DESKTOP_REGULAR_ROW_WIDTH) {
-        setLayoutMode('regular');
-        return;
-      }
-
-      if (node.clientWidth >= DESKTOP_CONDENSED_ROW_WIDTH) {
-        setLayoutMode('condensed');
-        return;
-      }
-
-      setLayoutMode('compact');
-    };
-
-    measure();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measure);
-      return () => window.removeEventListener('resize', measure);
-    }
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    window.addEventListener('resize', measure);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [showsDeleteAction]);
 
   function handleDesktopSegmentChange(index: number, nextValue: string) {
     const maxLength = DEFAULT_SEGMENT_LENGTHS[index];
     const trimmedValue = nextValue.slice(0, maxLength);
 
-    setDesktopValues((currentValues) => {
-      const nextDesktopValues = currentValues.map((value, valueIndex) =>
+    setDesktopValues((currentValues) =>
+      currentValues.map((value, valueIndex) =>
         valueIndex === index ? trimmedValue : value,
-      );
-
-      setMobileValue(flattenDesktopSegmentValues(nextDesktopValues));
-      return nextDesktopValues;
-    });
+      ),
+    );
 
     if (trimmedValue.length === maxLength) {
       desktopInputRefs.current[index + 1]?.focus();
@@ -400,8 +302,8 @@ export function HuntCode({
     let cursor = 0;
     let lastFilledIndex = index;
 
-    setDesktopValues((currentValues) => {
-      const nextDesktopValues = currentValues.map((currentValue, valueIndex) => {
+    setDesktopValues((currentValues) =>
+      currentValues.map((currentValue, valueIndex) => {
         if (valueIndex < index) {
           return currentValue;
         }
@@ -419,21 +321,11 @@ export function HuntCode({
         cursor += segmentLength;
         lastFilledIndex = valueIndex;
         return nextSegmentValue;
-      });
-
-      setMobileValue(flattenDesktopSegmentValues(nextDesktopValues));
-      return nextDesktopValues;
-    });
-
-    const nextInputIndex = Math.min(
-      lastFilledIndex + 1,
-      DEFAULT_SEGMENT_LENGTHS.length - 1,
+      }),
     );
-    const focusIndex =
-      cursor >= pastedText.length ? lastFilledIndex : nextInputIndex;
 
     requestAnimationFrame(() => {
-      desktopInputRefs.current[focusIndex]?.focus();
+      desktopInputRefs.current[lastFilledIndex]?.focus();
     });
   }
 
@@ -463,7 +355,14 @@ export function HuntCode({
               isDragging && 'shadow-[-19px_0_4px_rgba(0,0,0,0.12)]',
             )}
           >
-            <div className='flex items-center justify-center'>
+            <div
+              className={cx(
+                'flex h-full w-full items-center justify-center',
+                dragHandleProps && 'touch-none cursor-grab active:cursor-grabbing',
+                dragHandleClassName,
+              )}
+              {...restDragHandleProps}
+            >
               <span className='sr-only'>Priority {indexLabel}</span>
               <StatusGlyph indexLabel={indexLabel} state={state} />
             </div>
@@ -475,63 +374,30 @@ export function HuntCode({
               BODY_VARIANTS[state],
             )}
           >
-            <div ref={layoutRef} className='min-w-0 flex-1'>
-              {layoutMode === 'compact' ? (
+            <div className='flex min-w-0 flex-1 items-center gap-[8px]'>
+              {desktopValues.map((segment, index) => (
                 <InputBox
-                  ariaLabel='Mobile hunt code'
-                  compact
-                  maxLength={DEFAULT_MOBILE_CODE_LENGTH}
+                  key={`${index}-${DEFAULT_SEGMENT_LENGTHS[index]}`}
+                  ariaLabel={`Code segment ${index + 1}`}
+                  inputRef={(node) => {
+                    desktopInputRefs.current[index] = node;
+                  }}
+                  maxLength={DEFAULT_SEGMENT_LENGTHS[index]}
                   onChange={
                     isEditable
-                      ? (nextValue) => {
-                          const trimmedValue = nextValue.slice(
-                            0,
-                            DEFAULT_MOBILE_CODE_LENGTH,
-                          );
-
-                          setMobileValue(trimmedValue);
-                          setDesktopValues(
-                            resolveDesktopValuesFromCode(trimmedValue),
-                          );
-                        }
+                      ? (nextValue) =>
+                          handleDesktopSegmentChange(index, nextValue)
+                      : undefined
+                  }
+                  onPaste={
+                    isEditable
+                      ? (event) => handleDesktopPaste(index, event)
                       : undefined
                   }
                   readOnly={!isEditable}
-                  value={mobileValue}
+                  value={segment}
                 />
-              ) : (
-                <div
-                  className={cx(
-                    'flex w-full min-w-0 items-center',
-                    layoutMode === 'condensed' ? 'gap-[6px]' : 'gap-[8px]',
-                  )}
-                >
-                  {desktopValues.map((segment, index) => (
-                    <InputBox
-                      key={`${index}-${DEFAULT_SEGMENT_LENGTHS[index]}`}
-                      ariaLabel={`Code segment ${index + 1}`}
-                      condensed={layoutMode === 'condensed'}
-                      inputRef={(node) => {
-                        desktopInputRefs.current[index] = node;
-                      }}
-                      maxLength={DEFAULT_SEGMENT_LENGTHS[index]}
-                      onChange={
-                        isEditable
-                          ? (nextValue) =>
-                              handleDesktopSegmentChange(index, nextValue)
-                          : undefined
-                      }
-                      onPaste={
-                        isEditable
-                          ? (event) => handleDesktopPaste(index, event)
-                          : undefined
-                      }
-                      readOnly={!isEditable}
-                      value={segment}
-                    />
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
 
             {showsDeleteAction ? (
