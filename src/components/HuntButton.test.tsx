@@ -57,4 +57,35 @@ describe('HuntButton', () => {
 
     expect(screen.getByRole('button', { name: 'Button' })).toBeDisabled();
   });
+
+  it('uses disabled styling when disabled by prop', () => {
+    render(
+      <HuntButton disabled icon={<HuntIcon name='pause' />} tone='secondary'>
+        Button
+      </HuntButton>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Button' });
+
+    expect(button).toBeDisabled();
+    expect(button.className).toContain('bg-hunt-shell');
+    expect(button.className).toContain('text-hunt-border');
+  });
+
+  it('supports a persistent pressed style for toggle buttons', () => {
+    render(
+      <HuntButton
+        aria-label='Edit'
+        aria-pressed='true'
+        icon={<HuntIcon name='edit' />}
+        size='pill'
+        tone='secondary'
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'Edit' });
+
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button.className).toContain('aria-pressed:translate-y-[1px]');
+  });
 });

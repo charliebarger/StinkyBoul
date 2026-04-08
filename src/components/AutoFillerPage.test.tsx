@@ -7,9 +7,11 @@ describe('AutoFillerPage', () => {
     const executeScript = vi
       .fn()
       .mockResolvedValueOnce([{ result: 'complete' }])
+      .mockResolvedValueOnce([{ result: { canceled: false, runId: 1 } }])
+      .mockResolvedValueOnce([{ result: 'ready' }])
       .mockResolvedValue([
         {
-          result: { reason: 'filled', success: true },
+          result: { reason: 'success', success: true },
         },
       ]);
     const query = vi.fn().mockResolvedValue([{ id: 123 }]);
@@ -32,7 +34,7 @@ describe('AutoFillerPage', () => {
 
     expect(screen.getByText('StinkyBoul')).toBeInTheDocument();
     expect(screen.getByText('Hunt Codes')).toBeInTheDocument();
-    expect(screen.getByText('Waiting for page to load...')).toBeInTheDocument();
+    expect(screen.getByText('Idle')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Run Program' }),
     ).toBeInTheDocument();
@@ -44,24 +46,26 @@ describe('AutoFillerPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit hunt codes' }));
 
-    expect(screen.getByLabelText('Reorder hunt code 1')).toBeInTheDocument();
-    expect(
-      screen.getAllByRole('button', { name: 'Delete hunt code' }),
-    ).toHaveLength(4);
+    return waitFor(() => {
+      expect(screen.getByLabelText('Reorder hunt code 1')).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: 'Delete hunt code' }),
+      ).toHaveLength(4);
+    }).then(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add hunt code' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add hunt code' }));
+      expect(
+        screen.getAllByRole('button', { name: 'Delete hunt code' }),
+      ).toHaveLength(5);
 
-    expect(
-      screen.getAllByRole('button', { name: 'Delete hunt code' }),
-    ).toHaveLength(5);
+      fireEvent.click(
+        screen.getAllByRole('button', { name: 'Delete hunt code' })[4],
+      );
 
-    fireEvent.click(
-      screen.getAllByRole('button', { name: 'Delete hunt code' })[4],
-    );
-
-    expect(
-      screen.getAllByRole('button', { name: 'Delete hunt code' }),
-    ).toHaveLength(4);
+      expect(
+        screen.getAllByRole('button', { name: 'Delete hunt code' }),
+      ).toHaveLength(4);
+    });
   });
 
   it('updates the status text after running the program', async () => {
@@ -71,8 +75,59 @@ describe('AutoFillerPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Code EM012O1R succeeded. Submitting tag...'),
+        screen.getByRole('button', { name: 'Running...' }),
+      ).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Code EM012O1A succeeded. Submitting tag...'),
       ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText('Code EM012O1A succeeded. Submitting tag...'),
+    ).toHaveClass('text-[#12804a]');
+  });
+
+  it('disables run and reset while editing', async () => {
+    render(<AutoFillerPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit hunt codes' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Run Program' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reset program' })).toBeDisabled();
+    });
+  });
+
+  it('disables edit and add while the program is running', async () => {
+    render(<AutoFillerPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Program' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit hunt codes' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add hunt code' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reset program' })).not.toBeDisabled();
+    });
+  });
+
+  it('returns to idle after resetting the program', async () => {
+    render(<AutoFillerPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Program' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Running...' }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset program' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Idle')).toBeInTheDocument();
     });
   });
 

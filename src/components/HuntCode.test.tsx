@@ -27,53 +27,42 @@ describe('HuntCode', () => {
   it('allows entering a code into the segmented inputs', () => {
     render(<HuntCode state="editing" />);
 
-    const segmentInput = screen.getByLabelText('Code segment 3');
+    const fullInput = screen.getByLabelText('Hunt code');
 
-    fireEvent.change(segmentInput, { target: { value: '012' } });
+    fireEvent.change(fullInput, { target: { value: 'EM012O1R' } });
 
-    expect(segmentInput).toHaveValue('012');
+    expect(fullInput).toHaveValue('EM012O1R');
   });
 
-  it('renders the full segmented layout only', () => {
+  it('renders a single full-width input in edit mode', () => {
     render(<HuntCode state="editing" />);
 
-    expect(screen.queryByLabelText('Mobile hunt code')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.getByLabelText('Hunt code')).toBeInTheDocument();
+  });
+
+  it('renders segmented inputs outside edit mode', () => {
+    render(<HuntCode state="default" />);
+
     expect(screen.getAllByRole('textbox')).toHaveLength(5);
+    expect(screen.queryByLabelText('Hunt code')).not.toBeInTheDocument();
   });
 
-  it('moves focus to the next segment after reaching max length', () => {
-    render(<HuntCode state="editing" />);
+  it('shows a dedicated drag handle in edit mode', () => {
+    render(<HuntCode state="editing" indexLabel="3" />);
 
-    const firstSegment = screen.getByLabelText('Code segment 1');
-    const secondSegment = screen.getByLabelText('Code segment 2');
-
-    firstSegment.focus();
-    fireEvent.change(firstSegment, { target: { value: 'E' } });
-
-    expect(firstSegment).toHaveValue('E');
-    expect(secondSegment).toHaveFocus();
+    expect(screen.getByLabelText('Drag handle')).toBeInTheDocument();
+    expect(screen.queryByText('3')).not.toBeInTheDocument();
   });
 
-  it('fills segmented inputs from a pasted code and trims overflow', () => {
+  it('fills the single edit input from a full code and trims overflow', () => {
     render(<HuntCode state="editing" />);
 
-    const firstSegment = screen.getByLabelText('Code segment 1');
-    const secondSegment = screen.getByLabelText('Code segment 2');
-    const thirdSegment = screen.getByLabelText('Code segment 3');
-    const fourthSegment = screen.getByLabelText('Code segment 4');
-    const fifthSegment = screen.getByLabelText('Code segment 5');
+    const fullInput = screen.getByLabelText('Hunt code');
 
-    fireEvent.paste(firstSegment, {
-      clipboardData: {
-        getData: () => 'EF012O1AXYZ',
-      },
-    });
+    fireEvent.change(fullInput, { target: { value: 'EF012O1AXYZ' } });
 
-    expect(firstSegment).toHaveValue('E');
-    expect(secondSegment).toHaveValue('F');
-    expect(thirdSegment).toHaveValue('012');
-    expect(fourthSegment).toHaveValue('O1');
-    expect(fifthSegment).toHaveValue('A');
+    expect(fullInput).toHaveValue('EF012O1A');
   });
 
   it('shows the delete action in editing and dragging states', () => {

@@ -1,12 +1,21 @@
 import type { HTMLAttributes } from 'react';
 
 import AddIcon from './icons/add.svg?react';
+import DragHandleIcon from './icons/drag-handler.svg?react';
 import EditIcon from './icons/edit.svg?react';
 import PauseIcon from './icons/pause.svg?react';
 import PlayIcon from './icons/play.svg?react';
 import SyncIcon from './icons/sync.svg?react';
+import TrashcanIcon from './icons/trashcan.svg?react';
 
-export type HuntIconName = 'add' | 'pause' | 'play' | 'sync' | 'edit' | 'trash';
+export type HuntIconName =
+  | 'add'
+  | 'drag-handle'
+  | 'pause'
+  | 'play'
+  | 'sync'
+  | 'edit'
+  | 'trash';
 
 export type HuntIconTone =
   | 'inherit'
@@ -25,16 +34,31 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function iconToneClass(tone: HuntIconTone) {
+function usesCurrentColor(name: HuntIconName) {
+  return name === 'drag-handle' || name === 'trash';
+}
+
+function iconToneClass(name: HuntIconName, tone: HuntIconTone) {
+  if (usesCurrentColor(name)) {
+    switch (tone) {
+      case 'default':
+        return 'text-white';
+      case 'secondary':
+        return 'text-hunt-text';
+      case 'disabled':
+        return 'text-hunt-border';
+      case 'destructive':
+        return 'text-hunt-destructive';
+      default:
+        return '';
+    }
+  }
+
   switch (tone) {
-    case 'default':
-      return 'text-white';
     case 'secondary':
-      return 'text-hunt-text';
+      return 'brightness-0 saturate-100';
     case 'disabled':
-      return 'text-hunt-border';
-    case 'destructive':
-      return 'text-hunt-destructive';
+      return 'brightness-0 saturate-100 opacity-35';
     default:
       return '';
   }
@@ -44,6 +68,8 @@ function ImportedIcon({ name }: { name: HuntIconName }) {
   switch (name) {
     case 'add':
       return <AddIcon />;
+    case 'drag-handle':
+      return <DragHandleIcon className='h-full w-full [&_path]:fill-current' />;
     case 'pause':
       return <PauseIcon />;
     case 'play':
@@ -53,7 +79,7 @@ function ImportedIcon({ name }: { name: HuntIconName }) {
     case 'edit':
       return <EditIcon />;
     case 'trash':
-      return null;
+      return <TrashcanIcon className='h-full w-full [&_path]:fill-current' />;
   }
 }
 
@@ -69,29 +95,13 @@ export function HuntIcon({
       aria-hidden='true'
       className={cx(
         'inline-flex shrink-0 items-center justify-center',
-        iconToneClass(tone),
+        iconToneClass(name, tone),
         className,
       )}
       style={{ height: size, width: size }}
       {...props}
     >
-      {name === 'trash' ? (
-        <svg
-          viewBox='0 0 16 16'
-          className='h-full w-full fill-none stroke-current stroke-[1.8]'
-        >
-          <path d='M6.9 4.9h4.2' strokeLinecap='round' />
-          <path d='M4.7 6.6h6.6' strokeLinecap='round' />
-          <path
-            d='m5.3 6.6.4 5.4c.1.6.5 1 1.1 1h4.4c.6 0 1-.4 1.1-1l.4-5.4'
-            strokeLinecap='round'
-            strokeLinejoin='round'
-          />
-          <path d='M7.6 8.1v3.3m2.8-3.3v3.3' strokeLinecap='round' />
-        </svg>
-      ) : (
-        <ImportedIcon name={name} />
-      )}
+      <ImportedIcon name={name} />
     </span>
   );
 }

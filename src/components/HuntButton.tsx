@@ -31,12 +31,9 @@ const SIZE_CLASSES: Record<HuntButtonSize, string> = {
 };
 
 const TONE_CLASSES: Record<HuntButtonTone, string> = {
-  primary:
-    'bg-hunt-blueInk text-white hover:bg-hunt-blueInkHover focus:bg-hunt-blueInkHover',
-  secondary:
-    'bg-hunt-blueStrong text-hunt-text hover:bg-hunt-blue focus:bg-hunt-blue',
-  destructive:
-    'bg-hunt-destructive text-white hover:bg-hunt-destructiveHover focus:bg-hunt-destructiveHover',
+  primary: 'bg-hunt-blueInk text-white',
+  secondary: 'bg-hunt-blueStrong text-hunt-text',
+  destructive: 'bg-hunt-destructive text-white',
   disabled: 'bg-hunt-shell text-hunt-border',
 };
 
@@ -52,6 +49,7 @@ export function HuntButton({
   ...props
 }: HuntButtonProps) {
   const isDisabled = disabled || tone === 'disabled';
+  const effectiveTone: HuntButtonTone = isDisabled ? 'disabled' : tone;
   const hasLabel =
     children !== undefined && children !== null && children !== '';
   const isIconOnly = size === 'pill' || !hasLabel;
@@ -61,12 +59,20 @@ export function HuntButton({
       type={type}
       disabled={isDisabled}
       className={cx(
-        'inline-flex shrink-0 items-center justify-center font-semibold leading-none shadow-[0px_4px_4px_rgba(0,0,0,0.25)] transition-colors duration-150',
+        'inline-flex shrink-0 items-center justify-center font-semibold leading-none shadow-[0px_4px_4px_rgba(0,0,0,0.25)] transition-[transform,box-shadow,filter] duration-150',
         SIZE_CLASSES[size],
-        TONE_CLASSES[tone],
-        isDisabled && 'cursor-not-allowed',
+        TONE_CLASSES[effectiveTone],
+        isDisabled &&
+          'cursor-not-allowed shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]',
         !isDisabled &&
-          'focus:outline-none focus:ring-2 focus:ring-hunt-blue/30',
+          [
+            'focus:outline-none focus:ring-2 focus:ring-hunt-blue/30',
+            'hover:shadow-[0px_2px_2px_rgba(0,0,0,0.18),inset_0_1px_1px_rgba(255,255,255,0.08)]',
+            'active:translate-y-[1px] active:shadow-[inset_0_3px_8px_rgba(0,0,0,0.22),0px_1px_1px_rgba(0,0,0,0.16)]',
+            'aria-pressed:translate-y-[1px]',
+            'aria-pressed:shadow-[inset_0_3px_8px_rgba(0,0,0,0.18),0px_1px_2px_rgba(0,0,0,0.16)]',
+            'aria-pressed:ring-2 aria-pressed:ring-hunt-blue/30',
+          ].join(' '),
         isIconOnly && 'gap-0',
         className,
       )}

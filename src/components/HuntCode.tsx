@@ -28,10 +28,10 @@ const DEFAULT_SEGMENTS = ['E', 'M', '012', 'O1', 'R'] as const;
 const DEFAULT_SEGMENT_LENGTHS = DEFAULT_SEGMENTS.map(
   (segment) => segment.length,
 );
-
-function getDesktopSegmentWidth(maxLength: number) {
-  return `calc(${maxLength}ch + 18px)`;
-}
+const FULL_HUNT_CODE_LENGTH = DEFAULT_SEGMENT_LENGTHS.reduce(
+  (total, segmentLength) => total + segmentLength,
+  0,
+);
 
 const STATE_LABELS: Record<HuntCodeState, string> = {
   default: 'Default',
@@ -97,22 +97,50 @@ function flattenDesktopSegmentValues(segments: readonly string[]) {
   return segments.join('');
 }
 
+function sanitizeHuntCode(value: string) {
+  return value.replace(/\s+/g, '').toUpperCase().slice(0, FULL_HUNT_CODE_LENGTH);
+}
+
+function splitHuntCodeIntoSegments(value: string) {
+  const sanitizedValue = sanitizeHuntCode(value);
+  let cursor = 0;
+
+  return DEFAULT_SEGMENT_LENGTHS.map((segmentLength) => {
+    const nextSegment = sanitizedValue.slice(cursor, cursor + segmentLength);
+    cursor += segmentLength;
+    return nextSegment;
+  });
+}
+
 function InfoChip({
   label,
-  raised = false,
 }: {
   label: string;
-  raised?: boolean;
 }) {
   return (
     <span
       aria-hidden='true'
-      className={cx(
-        'flex h-[25px] w-[25px] items-center justify-center rounded-full border border-hunt-blueInk bg-hunt-blueStrong text-[12px] font-bold leading-none text-hunt-blueInk',
-        raised && 'border-dashed shadow-hunt-place',
-      )}
+      className='flex h-[25px] w-[25px] items-center justify-center rounded-full border border-hunt-blueInk bg-hunt-blueStrong text-[12px] font-bold leading-none text-hunt-blueInk'
     >
       {label}
+    </span>
+  );
+}
+
+function DragHandleGlyph({ dragging = false }: { dragging?: boolean }) {
+  return (
+    <span
+      aria-label='Drag handle'
+      className={cx(
+        'inline-flex items-center justify-center rounded-[8px] px-[6px] py-[5px] transition-colors duration-150 group-hover/drag:bg-slate-100',
+        dragging && 'bg-slate-200',
+      )}
+    >
+      <HuntIcon
+        className='text-slate-500'
+        name='drag-handle'
+        size={24}
+      />
     </span>
   );
 }
@@ -176,12 +204,11 @@ function StatusGlyph({
     );
   }
 
-  return (
-    <InfoChip
-      label={indexLabel}
-      raised={state === 'editing' || state === 'dragging'}
-    />
-  );
+  if (state === 'editing' || state === 'dragging') {
+    return <DragHandleGlyph dragging={state === 'dragging'} />;
+  }
+
+  return <InfoChip label={indexLabel} />;
 }
 
 function DeleteButton({
@@ -197,13 +224,13 @@ function DeleteButton({
       aria-label='Delete hunt code'
       onClick={onDelete}
       className={cx(
-        'inline-flex h-8 w-8 shrink-0 items-center justify-center text-hunt-border transition-colors duration-150',
+        'inline-flex h-6 w-6 shrink-0 items-center justify-center text-hunt-border transition-colors duration-150',
         'hover:text-hunt-failureInk focus:text-hunt-failureInk',
         'focus:outline-none focus:ring-2 focus:ring-hunt-failureInk/20',
         dragging && 'text-slate-500',
       )}
     >
-      <HuntIcon className='text-current' name='trash' size={22} />
+      <HuntIcon className='text-current' name='trash' size={18} />
     </button>
   );
 }
@@ -237,9 +264,8 @@ function InputBox({
       readOnly={readOnly}
       spellCheck={false}
       tabIndex={readOnly ? -1 : undefined}
-      style={{ width: getDesktopSegmentWidth(maxLength) }}
       className={cx(
-        'h-[34px] shrink-0 appearance-none rounded-[6px] border border-hunt-border bg-hunt-panel px-[4px] text-center text-[14px] font-medium leading-[1.1] text-hunt-text outline-none',
+        'h-[34px] w-full min-w-0 appearance-none rounded-[6px] border border-hunt-border bg-hunt-panel px-[4px] text-center text-[14px] font-medium leading-[1.1] text-hunt-text outline-none',
         !readOnly &&
           'focus:border-hunt-blueInk focus:ring-2 focus:ring-hunt-blue/70',
         readOnly && 'pointer-events-none cursor-default select-none',
@@ -247,6 +273,36 @@ function InputBox({
       value={value}
       onChange={(event) => onChange?.(event.target.value)}
       onPaste={onPaste}
+    />
+  );
+}
+
+function FullInputBox({
+  onChange,
+  readOnly = false,
+  value,
+}: {
+  onChange?: (value: string) => void;
+  readOnly?: boolean;
+  value: string;
+}) {
+  return (
+    <input
+      type='text'
+      maxLength={FULL_HUNT_CODE_LENGTH}
+      aria-label='Hunt code'
+      autoComplete='off'
+      readOnly={readOnly}
+      spellCheck={false}
+      tabIndex={readOnly ? -1 : undefined}
+      className={cx(
+        'h-[34px] w-full min-w-0 appearance-none rounded-[8px] border border-hunt-border bg-hunt-panel px-[12px] text-[14px] font-medium tracking-[0.08em] text-hunt-text outline-none',
+        !readOnly &&
+          'focus:border-hunt-blueInk focus:ring-2 focus:ring-hunt-blue/70',
+        readOnly && 'pointer-events-none cursor-default select-none',
+      )}
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
     />
   );
 }
@@ -263,7 +319,9 @@ export function HuntCode({
   ...props
 }: HuntCodeProps) {
   const isDragging = state === 'dragging';
-  const isEditable = state === 'default' || state === 'editing';
+  const showsExpandedField = state === 'editing' || state === 'dragging';
+  const isEditing = state === 'editing';
+  const isEditable = state === 'default' || isEditing;
   const showsDeleteAction = state === 'editing' || state === 'dragging';
   const a11yLabel = `${STATE_LABELS[state]} hunt code`;
   const desktopInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -282,6 +340,12 @@ export function HuntCode({
       desktopSegments: nextDesktopValues,
       mobileCode: flattenDesktopSegmentValues(nextDesktopValues),
     });
+  }
+
+  function handleFullCodeChange(nextValue: string) {
+    const nextDesktopValues = splitHuntCodeIntoSegments(nextValue);
+    setDesktopValues(nextDesktopValues);
+    emitChange(nextDesktopValues);
   }
 
   function handleDesktopSegmentChange(index: number, nextValue: string) {
@@ -352,7 +416,7 @@ export function HuntCode({
   return (
     <div
       aria-label={a11yLabel}
-      className={cx(isDragging && 'py-1', 'w-fit', className)}
+      className={cx(isDragging && 'py-1', 'w-full', className)}
       data-state={state}
       {...props}
     >
@@ -378,7 +442,8 @@ export function HuntCode({
             <div
               className={cx(
                 'flex h-full w-full items-center justify-center',
-                dragHandleProps && 'touch-none cursor-grab active:cursor-grabbing',
+                dragHandleProps &&
+                  'group/drag touch-none cursor-grab active:cursor-grabbing',
                 dragHandleClassName,
               )}
               {...restDragHandleProps}
@@ -394,31 +459,44 @@ export function HuntCode({
               BODY_VARIANTS[state],
             )}
           >
-            <div className='flex min-w-0 flex-1 items-center gap-[8px]'>
-              {desktopValues.map((segment, index) => (
-                <InputBox
-                  key={`${index}-${DEFAULT_SEGMENT_LENGTHS[index]}`}
-                  ariaLabel={`Code segment ${index + 1}`}
-                  inputRef={(node) => {
-                    desktopInputRefs.current[index] = node;
-                  }}
-                  maxLength={DEFAULT_SEGMENT_LENGTHS[index]}
-                  onChange={
-                    isEditable
-                      ? (nextValue) =>
-                          handleDesktopSegmentChange(index, nextValue)
-                      : undefined
-                  }
-                  onPaste={
-                    isEditable
-                      ? (event) => handleDesktopPaste(index, event)
-                      : undefined
-                  }
+            {showsExpandedField ? (
+              <div className='min-w-0 flex-1'>
+                <FullInputBox
+                  onChange={isEditable ? handleFullCodeChange : undefined}
                   readOnly={!isEditable}
-                  value={segment}
+                  value={flattenDesktopSegmentValues(desktopValues)}
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div
+                className='grid min-w-0 flex-1 gap-[8px]'
+                style={{ gridTemplateColumns: '1fr 1fr 3fr 2fr 1fr' }}
+              >
+                {desktopValues.map((segment, index) => (
+                  <InputBox
+                    key={`${index}-${DEFAULT_SEGMENT_LENGTHS[index]}`}
+                    ariaLabel={`Code segment ${index + 1}`}
+                    inputRef={(node) => {
+                      desktopInputRefs.current[index] = node;
+                    }}
+                    maxLength={DEFAULT_SEGMENT_LENGTHS[index]}
+                    onChange={
+                      isEditable
+                        ? (nextValue) =>
+                            handleDesktopSegmentChange(index, nextValue)
+                        : undefined
+                    }
+                    onPaste={
+                      isEditable
+                        ? (event) => handleDesktopPaste(index, event)
+                        : undefined
+                    }
+                    readOnly={!isEditable}
+                    value={segment}
+                  />
+                ))}
+              </div>
+            )}
 
             {showsDeleteAction ? (
               <DeleteButton dragging={isDragging} onDelete={onDelete} />

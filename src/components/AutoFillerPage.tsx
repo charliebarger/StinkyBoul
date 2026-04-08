@@ -29,6 +29,7 @@ type HuntCodeSeed = {
 };
 
 type ProgramStatus =
+  | 'idle'
   | 'waiting'
   | 'running'
   | 'trying-next'
@@ -37,22 +38,28 @@ type ProgramStatus =
   | 'error';
 
 type AutofillResult = {
-  reason: 'filled' | 'invalid-code' | 'missing-inputs' | 'missing-target';
+  reason:
+    | 'canceled'
+    | 'invalid-code'
+    | 'missing-inputs'
+    | 'not-set'
+    | 'success'
+    | 'timeout';
   success: boolean;
 };
+
+type HuntCodeVisualState =
+  | 'default'
+  | 'editing'
+  | 'dragging'
+  | 'success'
+  | 'failure'
+  | 'trying';
 
 const LOGO_URL =
   'https://www.figma.com/api/mcp/asset/8172062c-88a5-4100-9194-275d1cc4d327';
 const BACKGROUND_ART_URL =
   'https://www.figma.com/api/mcp/asset/a7ef81f0-2b60-4429-80c6-7a43dd61e6ff';
-const FIELD_SUFFIXES = [
-  'code_species',
-  'code_speciessubtype',
-  'code_huntlocation',
-  'code_dateperiod',
-  'code_weapon',
-] as const;
-const HUNT_CODE_SEGMENT_LENGTHS = [1, 1, 3, 2, 1] as const;
 const INITIAL_CODES: HuntCodeSeed[] = [
   {
     id: 1,
@@ -80,6 +87,7 @@ const EMPTY_CODE: Omit<HuntCodeSeed, 'id'> = {
   mobileCode: '',
 };
 const PROGRAM_STATUS_LABELS: Record<ProgramStatus, string> = {
+  idle: 'Idle',
   waiting: 'Waiting for page to load...',
   running: 'Running code {x}...',
   'trying-next': 'Code {x} failed. Trying next code...',
@@ -103,24 +111,42 @@ function flattenDesktopSegments(segments: readonly string[]) {
 }
 
 function parseHuntCode(code: string) {
-  const sanitizedCode = code.replace(/\s+/g, '').toUpperCase();
+  const normalizedCode = code.replace(/\s+/g, '').toUpperCase().slice(1);
+  const match = normalizedCode.match(/^([A-Z])(\d{1,3})([A-Z]\d)([A-Z])$/);
 
-  if (sanitizedCode.length !== 8) {
+  if (!match) {
     return null;
   }
 
-  let cursor = 0;
-
-  return HUNT_CODE_SEGMENT_LENGTHS.map((segmentLength) => {
-    const nextSegment = sanitizedCode.slice(cursor, cursor + segmentLength);
-    cursor += segmentLength;
-    return nextSegment;
-  });
+  const [, speciessubtype, huntlocation, dateperiod, weapon] = match;
+  return {
+    speciessubtype,
+    huntlocation,
+    dateperiod,
+    weapon,
+  };
 }
 
 function formatProgramStatus(status: ProgramStatus, code?: string) {
   return PROGRAM_STATUS_LABELS[status].replace('{x}', code ?? '{x}');
 }
+
+function getProgramStatusTextColor(status: ProgramStatus) {
+  if (status === 'success') {
+    return 'text-[#12804a]';
+  }
+
+  if (status === 'trying-next' || status === 'complete' || status === 'error') {
+    return 'text-[#bf1d1d]';
+  }
+
+  return 'text-[#6a7282]';
+}
+
+type PageRunState = {
+  canceled: boolean;
+  runId: number;
+};
 
 async function getActiveTabId() {
   if (
@@ -141,25 +167,21 @@ async function getActiveTabId() {
 
 async function executeOnTab<T, A extends unknown[]>(
   tabId: number,
-  func: (...args: A) => T,
+  func: (...args: A) => T | Promise<T>,
   args: A,
-) {
+): Promise<Awaited<T>> {
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
     func,
     args,
   });
 
-  return result?.result as T;
+  return result?.result as Awaited<T>;
 }
 
 async function waitForActivePageReady(tabId: number) {
   for (let attempt = 0; attempt < 16; attempt += 1) {
-    const readyState = await executeOnTab(
-      tabId,
-      () => document.readyState,
-      [],
-    );
+    const readyState = await executeOnTab(tabId, () => document.readyState, []);
 
     if (readyState === 'interactive' || readyState === 'complete') {
       return true;
@@ -171,78 +193,251 @@ async function waitForActivePageReady(tabId: number) {
   return false;
 }
 
-async function autofillCodeOnPage(
+async function setPageRunState(
   tabId: number,
-  code: string,
-  choiceIndex: number,
+  runId: number,
+  canceled: boolean,
 ) {
+  return executeOnTab<PageRunState, [number, boolean]>(
+    tabId,
+    (nextRunId, nextCanceled) => {
+      const nextState = {
+        canceled: nextCanceled,
+        runId: nextRunId,
+      };
+
+      (
+        window as typeof window & { __stinkyBoulRunState?: PageRunState }
+      ).__stinkyBoulRunState = nextState;
+
+      return nextState;
+    },
+    [runId, canceled],
+  );
+}
+
+async function waitForAutofillTargets(tabId: number, runId: number) {
+  for (;;) {
+    let targetStatus: 'canceled' | 'ready' | 'waiting' = 'waiting';
+
+    try {
+      targetStatus = await executeOnTab<
+        'canceled' | 'ready' | 'waiting',
+        [number]
+      >(
+        tabId,
+        (nextRunId) => {
+          const pageWindow = window as typeof window & {
+            __stinkyBoulRunState?: PageRunState;
+          };
+          const pageState = pageWindow.__stinkyBoulRunState;
+
+          if (pageState?.canceled) {
+            return 'canceled';
+          }
+
+          if (!pageState) {
+            pageWindow.__stinkyBoulRunState = {
+              canceled: false,
+              runId: nextRunId,
+            };
+          } else if (pageState.runId !== nextRunId) {
+            return 'canceled';
+          }
+
+          const requiredTargets = [
+            '[id*=".code_speciessubtype"]',
+            '[id*=".code_huntlocation"]',
+            '[id*=".code_dateperiod"]',
+            '[id*=".code_weapon"]',
+            '#submit',
+          ];
+          const hasTargets = requiredTargets.every((selector) =>
+            Boolean(document.querySelector(selector)),
+          );
+
+          return hasTargets ? 'ready' : 'waiting';
+        },
+        [runId],
+      );
+    } catch {
+      targetStatus = 'waiting';
+    }
+
+    if (targetStatus !== 'waiting') {
+      return targetStatus;
+    }
+
+    await sleep(400);
+  }
+}
+
+async function autofillCodeOnPage(tabId: number, code: string, runId: number) {
   return executeOnTab<AutofillResult, [string, number]>(
     tabId,
-    (nextCode, nextChoiceIndex) => {
-      const suffixes = [
-        'code_species',
-        'code_speciessubtype',
-        'code_huntlocation',
-        'code_dateperiod',
-        'code_weapon',
-      ] as const;
-      const segmentLengths = [1, 1, 3, 2, 1] as const;
-      const sanitizedCode = nextCode.replace(/\s+/g, '').toUpperCase();
+    (nextCode, nextRunId) => {
+      const normalizedCode = nextCode
+        .replace(/\s+/g, '')
+        .toUpperCase()
+        .slice(1);
+      const match = normalizedCode.match(/^([A-Z])(\d{1,3})([A-Z]\d)([A-Z])$/);
 
-      if (sanitizedCode.length !== 8) {
-        return { reason: 'invalid-code', success: false };
+      if (!match) {
+        return Promise.resolve({
+          reason: 'invalid-code' as const,
+          success: false,
+        });
       }
 
-      const speciesInputs = Array.from(
-        document.querySelectorAll<HTMLInputElement>('input[id$=".code_species"]'),
-      );
-      const prefixes = Array.from(
-        new Set(
-          speciesInputs
-            .map((input) => input.id.replace(/\.code_species$/, ''))
-            .filter(Boolean),
-        ),
-      );
-      const targetPrefix = prefixes[nextChoiceIndex];
+      const [, speciessubtype, huntlocation, dateperiod, weapon] = match;
+      const fields = {
+        speciessubtype,
+        huntlocation,
+        dateperiod,
+        weapon,
+      } as const;
 
-      if (!targetPrefix) {
-        return { reason: 'missing-target', success: false };
-      }
+      return new Promise<AutofillResult>((resolve) => {
+        let settled = false;
+        let observer: MutationObserver | null = null;
+        let pollId = 0;
+        let timeoutId = 0;
 
-      let cursor = 0;
-      const codeSegments = segmentLengths.map((segmentLength) => {
-        const nextSegment = sanitizedCode.slice(cursor, cursor + segmentLength);
-        cursor += segmentLength;
-        return nextSegment;
+        const cleanup = () => {
+          if (observer) {
+            observer.disconnect();
+            observer = null;
+          }
+
+          if (pollId) {
+            window.clearInterval(pollId);
+          }
+
+          if (timeoutId) {
+            window.clearTimeout(timeoutId);
+          }
+        };
+
+        const settle = (result: AutofillResult) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          cleanup();
+          resolve(result);
+        };
+
+        const isCanceled = () => {
+          const pageState = (
+            window as typeof window & { __stinkyBoulRunState?: PageRunState }
+          ).__stinkyBoulRunState;
+
+          return Boolean(pageState?.canceled || pageState?.runId !== nextRunId);
+        };
+
+        const checkOutcome = () => {
+          if (isCanceled()) {
+            settle({ reason: 'canceled', success: false });
+            return true;
+          }
+
+          const choiceDetailsEl = Array.from(
+            document.querySelectorAll<HTMLElement>('*'),
+          ).find((element) => element.textContent?.includes('Choice Details'));
+          const notSetEl = document.querySelector('[name="NOTSET"]');
+
+          if (choiceDetailsEl) {
+            settle({ reason: 'success', success: true });
+            return true;
+          }
+
+          if (notSetEl) {
+            settle({ reason: 'not-set', success: false });
+            return true;
+          }
+
+          return false;
+        };
+
+        observer = new MutationObserver(() => {
+          checkOutcome();
+        });
+        observer.observe(document.body, {
+          characterData: true,
+          childList: true,
+          subtree: true,
+        });
+
+        pollId = window.setInterval(() => {
+          if (isCanceled()) {
+            settle({ reason: 'canceled', success: false });
+            return;
+          }
+
+          let filled = 0;
+          let lastInput: HTMLInputElement | HTMLSelectElement | null = null;
+
+          for (const [key, value] of Object.entries(fields)) {
+            const input = document.querySelector<
+              HTMLInputElement | HTMLSelectElement
+            >(`[id*=".code_${key}"]`);
+
+            if (!input) {
+              continue;
+            }
+
+            if (input.value !== value) {
+              input.value = value;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            lastInput = input;
+            filled += 1;
+          }
+
+          if (filled !== Object.keys(fields).length) {
+            return;
+          }
+
+          if (lastInput && 'focus' in lastInput) {
+            lastInput.focus();
+          }
+
+          const submitButton = document.querySelector<HTMLElement>(
+            '#submit:not(.disabled)',
+          );
+
+          if (!submitButton) {
+            return;
+          }
+
+          window.clearInterval(pollId);
+          pollId = 0;
+          timeoutId = window.setTimeout(() => {
+            settle({ reason: 'timeout', success: false });
+          }, 8000);
+          submitButton.click();
+          checkOutcome();
+        }, 250);
       });
-      const targetInputs = suffixes.map((suffix) =>
-        document.getElementById(`${targetPrefix}.${suffix}`),
-      );
-
-      if (
-        targetInputs.some(
-          (input): input is null =>
-            !(input instanceof HTMLInputElement || input instanceof HTMLSelectElement),
-        )
-      ) {
-        return { reason: 'missing-inputs', success: false };
-      }
-
-      targetInputs.forEach((input, index) => {
-        const element = input as HTMLInputElement | HTMLSelectElement;
-        element.value = codeSegments[index] ?? '';
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-        element.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-
-      return { reason: 'filled', success: true };
     },
-    [code, choiceIndex],
+    [code, runId],
   );
 }
 
 function getRunnableCodeValue(code: HuntCodeSeed) {
   return flattenDesktopSegments(code.desktopSegments);
+}
+
+function RunningSpinnerIcon() {
+  return (
+    <span
+      aria-hidden='true'
+      className='inline-flex h-[17px] w-[17px] shrink-0 rounded-full border-2 border-hunt-border border-r-hunt-blueInk border-t-hunt-blueInk animate-hunt-spin'
+    />
+  );
 }
 
 export function reorderHuntCodes(
@@ -270,6 +465,7 @@ function SortableCodeCard({
   isEditing,
   onChange,
   onDelete,
+  state,
 }: {
   code: HuntCodeSeed;
   index: number;
@@ -279,6 +475,7 @@ function SortableCodeCard({
     mobileCode: string;
   }) => void;
   onDelete: () => void;
+  state?: HuntCodeVisualState;
 }) {
   const {
     attributes,
@@ -299,7 +496,7 @@ function SortableCodeCard({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={cx(isDragging && 'z-10')}
+      className={cx('w-full', isDragging && 'z-10')}
     >
       <HuntCode
         desktopSegments={code.desktopSegments}
@@ -316,7 +513,9 @@ function SortableCodeCard({
         mobileCode={code.mobileCode}
         onCodeChange={onChange}
         onDelete={onDelete}
-        state={isDragging ? 'dragging' : isEditing ? 'editing' : 'default'}
+        state={
+          isDragging ? 'dragging' : isEditing ? 'editing' : (state ?? 'default')
+        }
       />
     </div>
   );
@@ -325,11 +524,15 @@ function SortableCodeCard({
 export function AutoFillerPage() {
   const nextCodeIdRef = useRef(INITIAL_CODES.length + 1);
   const runRequestIdRef = useRef(0);
+  const activeTabIdRef = useRef<number | null>(null);
   const [codes, setCodes] = useState(INITIAL_CODES);
   const [isEditing, setIsEditing] = useState(false);
-  const [statusText, setStatusText] = useState(
-    formatProgramStatus('waiting'),
-  );
+  const [isRunning, setIsRunning] = useState(false);
+  const [programStatus, setProgramStatus] = useState<ProgramStatus>('idle');
+  const [statusText, setStatusText] = useState(formatProgramStatus('idle'));
+  const [codeStates, setCodeStates] = useState<
+    Record<number, HuntCodeVisualState>
+  >({});
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -377,10 +580,38 @@ export function AutoFillerPage() {
     const activeId = Number(event.active.id);
     const overId = event.over ? Number(event.over.id) : undefined;
 
-    setCodes((currentCodes) => reorderHuntCodes(currentCodes, activeId, overId));
+    setCodes((currentCodes) =>
+      reorderHuntCodes(currentCodes, activeId, overId),
+    );
+  }
+
+  function resetCodeStates() {
+    setCodeStates({});
+  }
+
+  function setCodeVisualState(id: number, nextState: HuntCodeVisualState) {
+    setCodeStates((currentStates) => ({
+      ...currentStates,
+      [id]: nextState,
+    }));
+  }
+
+  function updateStatus(nextStatus: ProgramStatus, code?: string) {
+    setProgramStatus(nextStatus);
+    setStatusText(formatProgramStatus(nextStatus, code));
+  }
+
+  function clearRunningState() {
+    resetCodeStates();
+    setIsRunning(false);
+    activeTabIdRef.current = null;
   }
 
   async function handleRunProgram() {
+    if (isRunning) {
+      return;
+    }
+
     const runRequestId = ++runRequestIdRef.current;
     const runnableCodes = codes
       .map((code) => ({
@@ -390,82 +621,144 @@ export function AutoFillerPage() {
       .filter((code) => code.codeText.length > 0);
 
     if (runnableCodes.length === 0) {
-      setStatusText(formatProgramStatus('complete'));
+      resetCodeStates();
+      updateStatus('idle');
       return;
     }
 
     try {
-      setStatusText(formatProgramStatus('waiting'));
+      resetCodeStates();
+      setIsRunning(true);
+      updateStatus('waiting');
 
       const activeTabId = await getActiveTabId();
 
       if (!activeTabId) {
-        setStatusText(formatProgramStatus('error'));
+        setIsRunning(false);
+        updateStatus('error');
         return;
       }
+
+      activeTabIdRef.current = activeTabId;
 
       const pageIsReady = await waitForActivePageReady(activeTabId);
 
       if (runRequestId !== runRequestIdRef.current) {
+        clearRunningState();
         return;
       }
 
       if (!pageIsReady) {
-        setStatusText(formatProgramStatus('error'));
+        clearRunningState();
+        updateStatus('error');
+        return;
+      }
+
+      await setPageRunState(activeTabId, runRequestId, false);
+
+      const targetStatus = await waitForAutofillTargets(
+        activeTabId,
+        runRequestId,
+      );
+
+      if (
+        runRequestId !== runRequestIdRef.current ||
+        targetStatus === 'canceled'
+      ) {
+        clearRunningState();
         return;
       }
 
       let successfulCode: string | null = null;
 
       for (const [index, code] of runnableCodes.entries()) {
-        setStatusText(formatProgramStatus('running', code.codeText));
+        updateStatus('running', code.codeText);
+        setCodeVisualState(code.id, 'trying');
 
-        const codeSegments = parseHuntCode(code.codeText);
+        const parsedCode = parseHuntCode(code.codeText);
 
-        if (!codeSegments) {
+        if (!parsedCode) {
+          setCodeVisualState(code.id, 'failure');
+
           if (index < runnableCodes.length - 1) {
-            setStatusText(formatProgramStatus('trying-next', code.codeText));
-            await sleep(200);
+            updateStatus('trying-next', code.codeText);
+            await sleep(1000);
             continue;
           }
 
           break;
         }
 
-        const result = await autofillCodeOnPage(activeTabId, code.codeText, index);
+        const result = await autofillCodeOnPage(
+          activeTabId,
+          code.codeText,
+          runRequestId,
+        );
 
         if (runRequestId !== runRequestIdRef.current) {
+          clearRunningState();
+          return;
+        }
+
+        if (result.reason === 'canceled') {
+          clearRunningState();
           return;
         }
 
         if (result.success) {
           successfulCode = code.codeText;
-          setStatusText(formatProgramStatus('success', code.codeText));
-          await sleep(150);
-          continue;
+          setCodeVisualState(code.id, 'success');
+          updateStatus('success', code.codeText);
+          break;
         }
+
+        setCodeVisualState(code.id, 'failure');
 
         if (index < runnableCodes.length - 1) {
-          setStatusText(formatProgramStatus('trying-next', code.codeText));
-          await sleep(200);
+          updateStatus('trying-next', code.codeText);
+          await sleep(1000);
         }
       }
 
-      setStatusText(
-        successfulCode
-          ? formatProgramStatus('success', successfulCode)
-          : formatProgramStatus('complete'),
+      updateStatus(
+        successfulCode ? 'success' : 'complete',
+        successfulCode ?? undefined,
       );
+      setIsRunning(false);
+      activeTabIdRef.current = null;
     } catch {
       if (runRequestId === runRequestIdRef.current) {
-        setStatusText(formatProgramStatus('error'));
+        updateStatus('error');
       }
+
+      clearRunningState();
     }
   }
 
-  function handlePauseProgram() {
+  async function handlePauseProgram() {
     runRequestIdRef.current += 1;
-    setStatusText(formatProgramStatus('waiting'));
+    resetCodeStates();
+    setIsRunning(false);
+    updateStatus('idle');
+
+    if (activeTabIdRef.current) {
+      await setPageRunState(
+        activeTabIdRef.current,
+        runRequestIdRef.current,
+        true,
+      ).catch(() => undefined);
+    }
+
+    activeTabIdRef.current = null;
+  }
+
+  async function handleResetProgram() {
+    await handlePauseProgram();
+  }
+
+  async function handleToggleEditMode() {
+    await handleResetProgram();
+    setIsEditing((currentState) => !currentState);
   }
 
   return (
@@ -519,7 +812,7 @@ export function AutoFillerPage() {
                 items={codes.map((code) => code.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div className='flex flex-col items-start gap-4'>
+                <div className='flex w-full flex-col items-stretch gap-4'>
                   {codes.map((code, index) => (
                     <SortableCodeCard
                       key={code.id}
@@ -530,6 +823,7 @@ export function AutoFillerPage() {
                         handleCodeChange(code.id, nextValue)
                       }
                       onDelete={() => handleDeleteCode(code.id)}
+                      state={codeStates[code.id]}
                     />
                   ))}
                 </div>
@@ -539,32 +833,37 @@ export function AutoFillerPage() {
             <div className='flex items-center justify-between pb-6 pt-8'>
               <div className='flex items-center gap-[10px]'>
                 <HuntButton
-                  icon={<HuntIcon name='play' />}
+                  aria-pressed={isRunning}
+                  className={isRunning ? 'ring-2 ring-hunt-blue/30' : undefined}
+                  disabled={isEditing && !isRunning}
+                  icon={
+                    isRunning ? (
+                      <RunningSpinnerIcon />
+                    ) : (
+                      <HuntIcon
+                        name='play'
+                        tone={isEditing ? 'disabled' : 'default'}
+                      />
+                    )
+                  }
                   size='medium'
-                  tone='primary'
-                  onClick={handleRunProgram}
+                  tone={isRunning ? 'secondary' : 'primary'}
+                  onClick={isRunning ? handlePauseProgram : handleRunProgram}
                 >
-                  Run Program
+                  {isRunning ? 'Running...' : 'Run Program'}
                 </HuntButton>
                 <HuntButton
-                  aria-label='Pause program'
+                  aria-label='Reset program'
+                  disabled={isEditing}
                   icon={
                     <HuntIcon
-                      className={
-                        statusText !== formatProgramStatus('waiting')
-                          ? 'brightness-0 saturate-100'
-                          : undefined
-                      }
-                      name='pause'
+                      name='sync'
+                      tone={isEditing ? 'disabled' : 'secondary'}
                     />
                   }
                   size='pill'
-                  tone={
-                    statusText !== formatProgramStatus('waiting')
-                      ? 'secondary'
-                      : 'disabled'
-                  }
-                  onClick={handlePauseProgram}
+                  tone='secondary'
+                  onClick={handleResetProgram}
                 />
               </div>
 
@@ -572,22 +871,24 @@ export function AutoFillerPage() {
                 <HuntButton
                   aria-label='Edit hunt codes'
                   aria-pressed={isEditing}
+                  disabled={isRunning}
                   icon={
                     <HuntIcon
-                      className='brightness-0 saturate-100'
                       name='edit'
+                      tone={isRunning ? 'disabled' : 'secondary'}
                     />
                   }
                   size='pill'
                   tone='secondary'
-                  onClick={() => setIsEditing((currentState) => !currentState)}
+                  onClick={handleToggleEditMode}
                 />
                 <HuntButton
                   aria-label='Add hunt code'
+                  disabled={isRunning}
                   icon={
                     <HuntIcon
-                      className='brightness-0 saturate-100'
                       name='add'
+                      tone={isRunning ? 'disabled' : 'secondary'}
                     />
                   }
                   size='pill'
@@ -596,10 +897,21 @@ export function AutoFillerPage() {
                 />
               </div>
             </div>
-
-            <p className='min-h-[14px] text-[14px] font-semibold leading-none text-[#6a7282] underline underline-offset-[3px]'>
-              {statusText}
-            </p>
+            <section className='bg-white rounded-md overflow-hidden shadow'>
+              <header className='px-4 py-3 border-b border-hunt-border  bg-hunt-shell'>
+                <h3 className='text-xs font-semibold  text-hunt-text '>
+                  Program Status
+                </h3>
+              </header>
+              <p
+                className={cx(
+                  'min-h-[14px] p-4 text-[14px] font-semibold leading-none transition-colors',
+                  getProgramStatusTextColor(programStatus),
+                )}
+              >
+                {statusText}
+              </p>
+            </section>
           </div>
         </section>
 
