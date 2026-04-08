@@ -9,7 +9,7 @@ export default defineConfig({
   manifest: {
     name: 'Chrome Extension',
     description: 'A sidepanel extension built with WXT, React, and TypeScript.',
-    permissions: ['storage'],
+    permissions: ['storage', 'activeTab', 'scripting', 'tabs'],
     action: {
       default_title: 'Open sidepanel',
     },

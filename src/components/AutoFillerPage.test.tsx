@@ -1,13 +1,38 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { AutoFillerPage, reorderHuntCodes } from './AutoFillerPage';
 
 describe('AutoFillerPage', () => {
+  beforeEach(() => {
+    const executeScript = vi
+      .fn()
+      .mockResolvedValueOnce([{ result: 'complete' }])
+      .mockResolvedValue([
+        {
+          result: { reason: 'filled', success: true },
+        },
+      ]);
+    const query = vi.fn().mockResolvedValue([{ id: 123 }]);
+
+    Object.defineProperty(globalThis, 'chrome', {
+      configurable: true,
+      value: {
+        scripting: {
+          executeScript,
+        },
+        tabs: {
+          query,
+        },
+      },
+    });
+  });
+
   it('renders the branded main page content', () => {
     render(<AutoFillerPage />);
 
     expect(screen.getByText('StinkyBoul')).toBeInTheDocument();
     expect(screen.getByText('Hunt Codes')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for page to load...')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Run Program' }),
     ).toBeInTheDocument();
@@ -39,12 +64,16 @@ describe('AutoFillerPage', () => {
     ).toHaveLength(4);
   });
 
-  it('updates the status text after running the program', () => {
+  it('updates the status text after running the program', async () => {
     render(<AutoFillerPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Program' }));
 
-    expect(screen.getByText('Running code {1}...')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText('Code EM012O1R succeeded. Submitting tag...'),
+      ).toBeInTheDocument();
+    });
   });
 
   it('reorders the hunt codes by id', () => {

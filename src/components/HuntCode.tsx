@@ -17,6 +17,10 @@ export type HuntCodeProps = HTMLAttributes<HTMLDivElement> & {
   indexLabel?: string;
   desktopSegments?: readonly string[];
   mobileCode?: string;
+  onCodeChange?: (nextValue: {
+    desktopSegments: readonly string[];
+    mobileCode: string;
+  }) => void;
   onDelete?: () => void;
 };
 
@@ -254,6 +258,7 @@ export function HuntCode({
   indexLabel = '1',
   desktopSegments,
   mobileCode,
+  onCodeChange,
   onDelete,
   ...props
 }: HuntCodeProps) {
@@ -272,15 +277,25 @@ export function HuntCode({
     setDesktopValues(resolveDesktopSegmentValues(desktopSegments, mobileCode));
   }, [desktopSegments, mobileCode]);
 
+  function emitChange(nextDesktopValues: readonly string[]) {
+    onCodeChange?.({
+      desktopSegments: nextDesktopValues,
+      mobileCode: flattenDesktopSegmentValues(nextDesktopValues),
+    });
+  }
+
   function handleDesktopSegmentChange(index: number, nextValue: string) {
     const maxLength = DEFAULT_SEGMENT_LENGTHS[index];
     const trimmedValue = nextValue.slice(0, maxLength);
 
-    setDesktopValues((currentValues) =>
-      currentValues.map((value, valueIndex) =>
+    setDesktopValues((currentValues) => {
+      const nextDesktopValues = currentValues.map((value, valueIndex) =>
         valueIndex === index ? trimmedValue : value,
-      ),
-    );
+      );
+
+      emitChange(nextDesktopValues);
+      return nextDesktopValues;
+    });
 
     if (trimmedValue.length === maxLength) {
       desktopInputRefs.current[index + 1]?.focus();
@@ -303,7 +318,8 @@ export function HuntCode({
     let lastFilledIndex = index;
 
     setDesktopValues((currentValues) =>
-      currentValues.map((currentValue, valueIndex) => {
+      {
+        const nextDesktopValues = currentValues.map((currentValue, valueIndex) => {
         if (valueIndex < index) {
           return currentValue;
         }
@@ -321,7 +337,11 @@ export function HuntCode({
         cursor += segmentLength;
         lastFilledIndex = valueIndex;
         return nextSegmentValue;
-      }),
+      });
+
+        emitChange(nextDesktopValues);
+        return nextDesktopValues;
+      },
     );
 
     requestAnimationFrame(() => {

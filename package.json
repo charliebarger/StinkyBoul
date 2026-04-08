@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "mock-site": "python3 -m http.server 4173 --directory mock-site",
     "zip": "wxt zip",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",

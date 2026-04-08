@@ -28,10 +28,31 @@ type HuntCodeSeed = {
   mobileCode: string;
 };
 
+type ProgramStatus =
+  | 'waiting'
+  | 'running'
+  | 'trying-next'
+  | 'success'
+  | 'complete'
+  | 'error';
+
+type AutofillResult = {
+  reason: 'filled' | 'invalid-code' | 'missing-inputs' | 'missing-target';
+  success: boolean;
+};
+
 const LOGO_URL =
   'https://www.figma.com/api/mcp/asset/8172062c-88a5-4100-9194-275d1cc4d327';
 const BACKGROUND_ART_URL =
   'https://www.figma.com/api/mcp/asset/a7ef81f0-2b60-4429-80c6-7a43dd61e6ff';
+const FIELD_SUFFIXES = [
+  'code_species',
+  'code_speciessubtype',
+  'code_huntlocation',
+  'code_dateperiod',
+  'code_weapon',
+] as const;
+const HUNT_CODE_SEGMENT_LENGTHS = [1, 1, 3, 2, 1] as const;
 const INITIAL_CODES: HuntCodeSeed[] = [
   {
     id: 1,
@@ -58,6 +79,171 @@ const EMPTY_CODE: Omit<HuntCodeSeed, 'id'> = {
   desktopSegments: ['', '', '', '', ''],
   mobileCode: '',
 };
+const PROGRAM_STATUS_LABELS: Record<ProgramStatus, string> = {
+  waiting: 'Waiting for page to load...',
+  running: 'Running code {x}...',
+  'trying-next': 'Code {x} failed. Trying next code...',
+  success: 'Code {x} succeeded. Submitting tag...',
+  complete: 'All codes have been evaluated. No tags drawn.',
+  error: 'An error occurred while running the program.',
+};
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function sleep(durationMs: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, durationMs);
+  });
+}
+
+function flattenDesktopSegments(segments: readonly string[]) {
+  return segments.join('').replace(/\s+/g, '').toUpperCase();
+}
+
+function parseHuntCode(code: string) {
+  const sanitizedCode = code.replace(/\s+/g, '').toUpperCase();
+
+  if (sanitizedCode.length !== 8) {
+    return null;
+  }
+
+  let cursor = 0;
+
+  return HUNT_CODE_SEGMENT_LENGTHS.map((segmentLength) => {
+    const nextSegment = sanitizedCode.slice(cursor, cursor + segmentLength);
+    cursor += segmentLength;
+    return nextSegment;
+  });
+}
+
+function formatProgramStatus(status: ProgramStatus, code?: string) {
+  return PROGRAM_STATUS_LABELS[status].replace('{x}', code ?? '{x}');
+}
+
+async function getActiveTabId() {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.tabs?.query ||
+    !chrome.scripting?.executeScript
+  ) {
+    return null;
+  }
+
+  const [activeTab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
+
+  return activeTab?.id ?? null;
+}
+
+async function executeOnTab<T, A extends unknown[]>(
+  tabId: number,
+  func: (...args: A) => T,
+  args: A,
+) {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func,
+    args,
+  });
+
+  return result?.result as T;
+}
+
+async function waitForActivePageReady(tabId: number) {
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const readyState = await executeOnTab(
+      tabId,
+      () => document.readyState,
+      [],
+    );
+
+    if (readyState === 'interactive' || readyState === 'complete') {
+      return true;
+    }
+
+    await sleep(200);
+  }
+
+  return false;
+}
+
+async function autofillCodeOnPage(
+  tabId: number,
+  code: string,
+  choiceIndex: number,
+) {
+  return executeOnTab<AutofillResult, [string, number]>(
+    tabId,
+    (nextCode, nextChoiceIndex) => {
+      const suffixes = [
+        'code_species',
+        'code_speciessubtype',
+        'code_huntlocation',
+        'code_dateperiod',
+        'code_weapon',
+      ] as const;
+      const segmentLengths = [1, 1, 3, 2, 1] as const;
+      const sanitizedCode = nextCode.replace(/\s+/g, '').toUpperCase();
+
+      if (sanitizedCode.length !== 8) {
+        return { reason: 'invalid-code', success: false };
+      }
+
+      const speciesInputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[id$=".code_species"]'),
+      );
+      const prefixes = Array.from(
+        new Set(
+          speciesInputs
+            .map((input) => input.id.replace(/\.code_species$/, ''))
+            .filter(Boolean),
+        ),
+      );
+      const targetPrefix = prefixes[nextChoiceIndex];
+
+      if (!targetPrefix) {
+        return { reason: 'missing-target', success: false };
+      }
+
+      let cursor = 0;
+      const codeSegments = segmentLengths.map((segmentLength) => {
+        const nextSegment = sanitizedCode.slice(cursor, cursor + segmentLength);
+        cursor += segmentLength;
+        return nextSegment;
+      });
+      const targetInputs = suffixes.map((suffix) =>
+        document.getElementById(`${targetPrefix}.${suffix}`),
+      );
+
+      if (
+        targetInputs.some(
+          (input): input is null =>
+            !(input instanceof HTMLInputElement || input instanceof HTMLSelectElement),
+        )
+      ) {
+        return { reason: 'missing-inputs', success: false };
+      }
+
+      targetInputs.forEach((input, index) => {
+        const element = input as HTMLInputElement | HTMLSelectElement;
+        element.value = codeSegments[index] ?? '';
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      return { reason: 'filled', success: true };
+    },
+    [code, choiceIndex],
+  );
+}
+
+function getRunnableCodeValue(code: HuntCodeSeed) {
+  return flattenDesktopSegments(code.desktopSegments);
+}
 
 export function reorderHuntCodes(
   codes: HuntCodeSeed[],
@@ -78,19 +264,20 @@ export function reorderHuntCodes(
   return arrayMove(codes, oldIndex, newIndex);
 }
 
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(' ');
-}
-
 function SortableCodeCard({
   code,
   index,
   isEditing,
+  onChange,
   onDelete,
 }: {
   code: HuntCodeSeed;
   index: number;
   isEditing: boolean;
+  onChange: (nextValue: {
+    desktopSegments: readonly string[];
+    mobileCode: string;
+  }) => void;
   onDelete: () => void;
 }) {
   const {
@@ -127,6 +314,7 @@ function SortableCodeCard({
         }
         indexLabel={String(index + 1)}
         mobileCode={code.mobileCode}
+        onCodeChange={onChange}
         onDelete={onDelete}
         state={isDragging ? 'dragging' : isEditing ? 'editing' : 'default'}
       />
@@ -136,9 +324,12 @@ function SortableCodeCard({
 
 export function AutoFillerPage() {
   const nextCodeIdRef = useRef(INITIAL_CODES.length + 1);
+  const runRequestIdRef = useRef(0);
   const [codes, setCodes] = useState(INITIAL_CODES);
   const [isEditing, setIsEditing] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
+  const [statusText, setStatusText] = useState(
+    formatProgramStatus('waiting'),
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -158,6 +349,26 @@ export function AutoFillerPage() {
     ]);
   }
 
+  function handleCodeChange(
+    id: number,
+    nextValue: {
+      desktopSegments: readonly string[];
+      mobileCode: string;
+    },
+  ) {
+    setCodes((currentCodes) =>
+      currentCodes.map((code) =>
+        code.id === id
+          ? {
+              ...code,
+              desktopSegments: [...nextValue.desktopSegments],
+              mobileCode: nextValue.mobileCode,
+            }
+          : code,
+      ),
+    );
+  }
+
   function handleDeleteCode(id: number) {
     setCodes((currentCodes) => currentCodes.filter((code) => code.id !== id));
   }
@@ -167,6 +378,94 @@ export function AutoFillerPage() {
     const overId = event.over ? Number(event.over.id) : undefined;
 
     setCodes((currentCodes) => reorderHuntCodes(currentCodes, activeId, overId));
+  }
+
+  async function handleRunProgram() {
+    const runRequestId = ++runRequestIdRef.current;
+    const runnableCodes = codes
+      .map((code) => ({
+        codeText: getRunnableCodeValue(code),
+        id: code.id,
+      }))
+      .filter((code) => code.codeText.length > 0);
+
+    if (runnableCodes.length === 0) {
+      setStatusText(formatProgramStatus('complete'));
+      return;
+    }
+
+    try {
+      setStatusText(formatProgramStatus('waiting'));
+
+      const activeTabId = await getActiveTabId();
+
+      if (!activeTabId) {
+        setStatusText(formatProgramStatus('error'));
+        return;
+      }
+
+      const pageIsReady = await waitForActivePageReady(activeTabId);
+
+      if (runRequestId !== runRequestIdRef.current) {
+        return;
+      }
+
+      if (!pageIsReady) {
+        setStatusText(formatProgramStatus('error'));
+        return;
+      }
+
+      let successfulCode: string | null = null;
+
+      for (const [index, code] of runnableCodes.entries()) {
+        setStatusText(formatProgramStatus('running', code.codeText));
+
+        const codeSegments = parseHuntCode(code.codeText);
+
+        if (!codeSegments) {
+          if (index < runnableCodes.length - 1) {
+            setStatusText(formatProgramStatus('trying-next', code.codeText));
+            await sleep(200);
+            continue;
+          }
+
+          break;
+        }
+
+        const result = await autofillCodeOnPage(activeTabId, code.codeText, index);
+
+        if (runRequestId !== runRequestIdRef.current) {
+          return;
+        }
+
+        if (result.success) {
+          successfulCode = code.codeText;
+          setStatusText(formatProgramStatus('success', code.codeText));
+          await sleep(150);
+          continue;
+        }
+
+        if (index < runnableCodes.length - 1) {
+          setStatusText(formatProgramStatus('trying-next', code.codeText));
+          await sleep(200);
+        }
+      }
+
+      setStatusText(
+        successfulCode
+          ? formatProgramStatus('success', successfulCode)
+          : formatProgramStatus('complete'),
+      );
+    } catch {
+      if (runRequestId === runRequestIdRef.current) {
+        setStatusText(formatProgramStatus('error'));
+      }
+    }
+  }
+
+  function handlePauseProgram() {
+    runRequestIdRef.current += 1;
+    setStatusText(formatProgramStatus('waiting'));
   }
 
   return (
@@ -227,6 +526,9 @@ export function AutoFillerPage() {
                       code={code}
                       index={index}
                       isEditing={isEditing}
+                      onChange={(nextValue) =>
+                        handleCodeChange(code.id, nextValue)
+                      }
                       onDelete={() => handleDeleteCode(code.id)}
                     />
                   ))}
@@ -240,7 +542,7 @@ export function AutoFillerPage() {
                   icon={<HuntIcon name='play' />}
                   size='medium'
                   tone='primary'
-                  onClick={() => setIsRunning(true)}
+                  onClick={handleRunProgram}
                 >
                   Run Program
                 </HuntButton>
@@ -249,14 +551,20 @@ export function AutoFillerPage() {
                   icon={
                     <HuntIcon
                       className={
-                        isRunning ? 'brightness-0 saturate-100' : undefined
+                        statusText !== formatProgramStatus('waiting')
+                          ? 'brightness-0 saturate-100'
+                          : undefined
                       }
                       name='pause'
                     />
                   }
                   size='pill'
-                  tone={isRunning ? 'secondary' : 'disabled'}
-                  onClick={() => setIsRunning(false)}
+                  tone={
+                    statusText !== formatProgramStatus('waiting')
+                      ? 'secondary'
+                      : 'disabled'
+                  }
+                  onClick={handlePauseProgram}
                 />
               </div>
 
@@ -290,7 +598,7 @@ export function AutoFillerPage() {
             </div>
 
             <p className='min-h-[14px] text-[14px] font-semibold leading-none text-[#6a7282] underline underline-offset-[3px]'>
-              {isRunning ? 'Running code {1}...' : 'Running code {x}...'}
+              {statusText}
             </p>
           </div>
         </section>
