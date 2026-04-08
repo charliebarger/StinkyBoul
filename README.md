@@ -1,6 +1,6 @@
-# Chrome Extension
+# StinkyBoul
 
-A Chrome extension project built with WXT, React, TypeScript, Tailwind CSS, Storybook, and Vitest.
+Chrome extension for saving hunt codes in priority order and autofilling tag details from a side panel.
 
 ## Scripts
 
@@ -13,3 +13,8 @@ A Chrome extension project built with WXT, React, TypeScript, Tailwind CSS, Stor
 - `npm run test:watch` runs the test suite in watch mode
 - `npm run typecheck` runs TypeScript without emitting files
 
+## Chrome Web Store Prep
+
+- Upload zip: `.output/chrome-extension-0.1.0-chrome.zip`
+- Privacy policy draft: `docs/privacy-policy.html`
+- Store listing draft: `docs/chrome-web-store-listing.md`

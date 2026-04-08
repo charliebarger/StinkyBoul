@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StinkyBoul Docs</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --text: #162456;
+        --muted: #52607a;
+        --border: #d6dceb;
+        --accent: #2342a5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(180deg, #eef3ff 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      main {
+        width: min(760px, calc(100% - 32px));
+        margin: 40px auto;
+        padding: 32px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 14px 40px rgba(18, 36, 90, 0.08);
+      }
+
+      h1, h2 {
+        margin: 0 0 16px;
+      }
+
+      h1 {
+        font-size: 32px;
+      }
+
+      p, li {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>StinkyBoul Docs</h1>
+      <p>Public support and policy pages for the StinkyBoul Chrome extension.</p>
+
+      <h2>Pages</h2>
+      <ul>
+        <li><a href="./privacy-policy/">Privacy Policy</a></li>
+      </ul>
+    </main>
+  </body>
+  </html>

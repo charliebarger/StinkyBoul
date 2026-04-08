@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StinkyBoul Privacy Policy</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #162456;
+      --muted: #52607a;
+      --border: #d6dceb;
+      --accent: #2342a5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #eef3ff 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+
+    main {
+      width: min(760px, calc(100% - 32px));
+      margin: 40px auto;
+      padding: 32px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 14px 40px rgba(18, 36, 90, 0.08);
+    }
+
+    h1,
+    h2 {
+      margin: 0 0 16px;
+    }
+
+    h1 {
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-top: 28px;
+      font-size: 20px;
+    }
+
+    p,
+    li {
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--accent);
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>StinkyBoul Privacy Policy</h1>
+    <p>Last updated: April 8, 2026</p>
+
+    <p>
+      StinkyBoul is a Chrome extension that helps users save hunt codes in a
+      chosen order and autofill tag details from the browser side panel.
+    </p>
+
+    <h2>What StinkyBoul stores</h2>
+    <ul>
+      <li>Saved access token for extension activation</li>
+      <li>A browser-specific identifier used to validate the activated token</li>
+      <li>Saved hunt codes and their display order</li>
+    </ul>
+
+    <h2>How data is used</h2>
+    <p>
+      This data is used only to activate the extension, remember a user's hunt
+      codes, and autofill tag details when the user runs the extension.
+    </p>
+
+    <h2>Where data is stored</h2>
+    <p>
+      Hunt codes and activation state are stored locally in Chrome extension
+      storage. Activation requests are checked against a Supabase backend that
+      stores access tokens and the browser identifier that claimed each token.
+    </p>
+
+    <h2>What StinkyBoul does not do</h2>
+    <ul>
+      <li>It does not sell user data</li>
+      <li>It does not use data for advertising</li>
+      <li>It does not track browsing history for analytics</li>
+      <li>It does not share personal data with third parties except as needed to run the activation backend</li>
+    </ul>
+
+    <h2>Permissions</h2>
+    <p>
+      StinkyBoul requests Chrome permissions needed to open the side panel,
+      store data locally, identify the active tab, and inject autofill logic
+      into the current page when the user explicitly runs the program.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      charliebarger96@gmail.com
+    </p>
+  </main>
+</body>
+
+</html>
