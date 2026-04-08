@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>StinkyBoul Docs</title>
+    <title>CPW Mock Site Demo</title>
     <style>
       :root {
         color-scheme: light;
@@ -52,17 +52,29 @@
       a {
         color: var(--accent);
       }
+
+      code {
+        font-family: monospace;
+      }
     </style>
   </head>
   <body>
     <main>
-      <h1>StinkyBoul Docs</h1>
-      <p>Public support and policy pages for the StinkyBoul Chrome extension.</p>
+      <h1>CPW Mock Site Demo</h1>
+      <p>
+        This repository includes a local mock CPW site for testing the
+        StinkyBoul extension. The mock site is intended for development and demo
+        use.
+      </p>
 
-      <h2>Pages</h2>
+      <h2>How to run it locally</h2>
+      <p>From the repo root, run:</p>
+      <p><code>npm run mock-site</code></p>
+      <p>Then open <code>http://localhost:4173</code>.</p>
+
+      <h2>Files</h2>
       <ul>
-        <li><a href="./privacy-policy/">Privacy Policy</a></li>
-        <li><a href="./cpw-mock-site/">CPW Mock Site Demo</a></li>
+        <li><a href="https://github.com/charliebarger/StinkyBoul/tree/main/mock-site">Mock site source in GitHub</a></li>
       </ul>
     </main>
   </body>

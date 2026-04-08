@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   closestCenter,
@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+import { getStoredHuntCodes, setStoredHuntCodes } from '../lib/huntCodesStorage';
 import { HuntButton } from './HuntButton';
 import { HuntCode } from './HuntCode';
 import { HuntIcon } from './HuntIcon';
@@ -87,7 +88,7 @@ const EMPTY_CODE: Omit<HuntCodeSeed, 'id'> = {
   mobileCode: '',
 };
 const PROGRAM_STATUS_LABELS: Record<ProgramStatus, string> = {
-  idle: 'Idle',
+  idle: 'Ready to run program.',
   waiting: 'Waiting for page to load...',
   running: 'Running code {x}...',
   'trying-next': 'Code {x} failed. Trying next code...',
@@ -522,6 +523,7 @@ function SortableCodeCard({
 }
 
 export function AutoFillerPage() {
+  const hasLoadedStoredCodesRef = useRef(false);
   const nextCodeIdRef = useRef(INITIAL_CODES.length + 1);
   const runRequestIdRef = useRef(0);
   const activeTabIdRef = useRef<number | null>(null);
@@ -600,6 +602,44 @@ export function AutoFillerPage() {
     setProgramStatus(nextStatus);
     setStatusText(formatProgramStatus(nextStatus, code));
   }
+
+  useEffect(() => {
+    updateStatus('idle');
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function hydrateStoredCodes() {
+      const storedCodes = await getStoredHuntCodes();
+
+      if (!isCurrent) {
+        return;
+      }
+
+      if (storedCodes) {
+        setCodes(storedCodes);
+        nextCodeIdRef.current =
+          Math.max(...storedCodes.map((code) => code.id)) + 1;
+      }
+
+      hasLoadedStoredCodesRef.current = true;
+    }
+
+    hydrateStoredCodes();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedStoredCodesRef.current) {
+      return;
+    }
+
+    void setStoredHuntCodes(codes);
+  }, [codes]);
 
   function clearRunningState() {
     resetCodeStates();
@@ -904,6 +944,8 @@ export function AutoFillerPage() {
                 </h3>
               </header>
               <p
+                role='status'
+                aria-live='polite'
                 className={cx(
                   'min-h-[14px] p-4 text-[14px] font-semibold leading-none transition-colors',
                   getProgramStatusTextColor(programStatus),
