@@ -57,10 +57,8 @@ type HuntCodeVisualState =
   | 'failure'
   | 'trying';
 
-const LOGO_URL =
-  'https://www.figma.com/api/mcp/asset/8172062c-88a5-4100-9194-275d1cc4d327';
-const BACKGROUND_ART_URL =
-  'https://www.figma.com/api/mcp/asset/a7ef81f0-2b60-4429-80c6-7a43dd61e6ff';
+const LOGO_URL = '/deer-logo.png';
+const BACKGROUND_ART_URL = '/topo-background.png';
 const INITIAL_CODES: HuntCodeSeed[] = [
   {
     id: 1,
@@ -803,11 +801,11 @@ export function AutoFillerPage() {
 
   return (
     <main className='relative min-h-screen overflow-hidden bg-[#f9fafb] text-hunt-text'>
-      <div className='pointer-events-none absolute inset-0 overflow-hidden opacity-60'>
+      <div className='pointer-events-none absolute -left-[119px] -top-[27px] h-[773px] w-[239px] overflow-hidden opacity-60'>
         <img
           alt=''
           aria-hidden='true'
-          className='absolute inset-0 h-full w-full object-cover'
+          className='absolute -left-[533px] top-0 h-[773px] w-[773px] max-w-none'
           src={BACKGROUND_ART_URL}
         />
       </div>
@@ -937,23 +935,16 @@ export function AutoFillerPage() {
                 />
               </div>
             </div>
-            <section className='bg-white rounded-md overflow-hidden shadow'>
-              <header className='px-4 py-3 border-b border-hunt-border  bg-hunt-shell'>
-                <h3 className='text-xs font-semibold  text-hunt-text '>
-                  Program Status
-                </h3>
-              </header>
-              <p
-                role='status'
-                aria-live='polite'
-                className={cx(
-                  'min-h-[14px] p-4 text-[14px] font-semibold leading-none transition-colors',
-                  getProgramStatusTextColor(programStatus),
-                )}
-              >
-                {statusText}
-              </p>
-            </section>
+            <p
+              role='status'
+              aria-live='polite'
+              className={cx(
+                'min-h-[14px] text-[14px] font-semibold leading-none underline transition-colors',
+                getProgramStatusTextColor(programStatus),
+              )}
+            >
+              {statusText}
+            </p>
           </div>
         </section>
 
