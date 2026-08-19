@@ -8,6 +8,7 @@
     "build": "wxt build",
     "mock-site": "python3 -m http.server 4173 --directory mock-site",
     "zip": "wxt zip",
+    "publish:download": "npm run zip && cp .output/chrome-extension-0.1.0-chrome.zip docs/downloads/StinkyBoul-chrome-extension.zip",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test": "vitest run",

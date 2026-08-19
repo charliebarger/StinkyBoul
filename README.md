@@ -7,6 +7,7 @@ Chrome extension for saving hunt codes in priority order and autofilling tag det
 - `npm run dev` starts WXT in development mode
 - `npm run build` builds the extension
 - `npm run zip` creates a distributable archive
+- `npm run publish:download` rebuilds the extension ZIP served by the install site
 - `npm run storybook` starts Storybook
 - `npm run build-storybook` builds the Storybook site
 - `npm run test` runs the test suite once
