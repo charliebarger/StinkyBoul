@@ -720,7 +720,6 @@ export function AutoFillerPage() {
 
           if (index < runnableCodes.length - 1) {
             updateStatus('trying-next', code.codeText);
-            await sleep(1000);
             continue;
           }
 
@@ -754,7 +753,6 @@ export function AutoFillerPage() {
 
         if (index < runnableCodes.length - 1) {
           updateStatus('trying-next', code.codeText);
-          await sleep(1000);
         }
       }
 
