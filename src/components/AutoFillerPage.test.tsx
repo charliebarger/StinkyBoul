@@ -54,7 +54,17 @@ describe('AutoFillerPage', () => {
     expect(
       screen.getByRole('button', { name: 'Run Program' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Loop' })).not.toBeChecked();
     expect(screen.getByText('Caleb McDaniel')).toBeInTheDocument();
+  });
+
+  it('lets the user enable looping before running', () => {
+    render(<AutoFillerPage />);
+
+    const loopToggle = screen.getByRole('checkbox', { name: 'Loop' });
+    fireEvent.click(loopToggle);
+
+    expect(loopToggle).toBeChecked();
   });
 
   it('enters edit mode, adds a card, and deletes it', () => {
@@ -91,7 +101,7 @@ describe('AutoFillerPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Running...' }),
+        screen.getByRole('button', { name: 'Stop' }),
       ).toHaveAttribute('aria-pressed', 'true');
     });
 
@@ -160,7 +170,7 @@ describe('AutoFillerPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Running...' }),
+        screen.getByRole('button', { name: 'Stop' }),
       ).toBeInTheDocument();
     });
 

@@ -34,6 +34,7 @@ type ProgramStatus =
   | 'waiting'
   | 'running'
   | 'trying-next'
+  | 'looping'
   | 'success'
   | 'complete'
   | 'error';
@@ -90,6 +91,7 @@ const PROGRAM_STATUS_LABELS: Record<ProgramStatus, string> = {
   waiting: 'Waiting for page to load...',
   running: 'Running code {x}...',
   'trying-next': 'Code {x} failed. Trying next code...',
+  looping: 'No code succeeded. Looping back to the first code...',
   success: 'Code {x} succeeded. Submitting tag...',
   complete: 'All codes have been evaluated. No tags drawn.',
   error: 'An error occurred while running the program.',
@@ -135,7 +137,12 @@ function getProgramStatusTextColor(status: ProgramStatus) {
     return 'text-[#12804a]';
   }
 
-  if (status === 'trying-next' || status === 'complete' || status === 'error') {
+  if (
+    status === 'trying-next' ||
+    status === 'looping' ||
+    status === 'complete' ||
+    status === 'error'
+  ) {
     return 'text-[#bf1d1d]';
   }
 
@@ -430,15 +437,6 @@ function getRunnableCodeValue(code: HuntCodeSeed) {
   return flattenDesktopSegments(code.desktopSegments);
 }
 
-function RunningSpinnerIcon() {
-  return (
-    <span
-      aria-hidden='true'
-      className='inline-flex h-[17px] w-[17px] shrink-0 rounded-full border-2 border-hunt-border border-r-hunt-blueInk border-t-hunt-blueInk animate-hunt-spin'
-    />
-  );
-}
-
 export function reorderHuntCodes(
   codes: HuntCodeSeed[],
   activeId: number,
@@ -527,6 +525,7 @@ export function AutoFillerPage() {
   const activeTabIdRef = useRef<number | null>(null);
   const [codes, setCodes] = useState(INITIAL_CODES);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [programStatus, setProgramStatus] = useState<ProgramStatus>('idle');
   const [statusText, setStatusText] = useState(formatProgramStatus('idle'));
@@ -709,51 +708,66 @@ export function AutoFillerPage() {
 
       let successfulCode: string | null = null;
 
-      for (const [index, code] of runnableCodes.entries()) {
-        updateStatus('running', code.codeText);
-        setCodeVisualState(code.id, 'trying');
+      while (
+        !successfulCode &&
+        runRequestId === runRequestIdRef.current
+      ) {
+        resetCodeStates();
 
-        const parsedCode = parseHuntCode(code.codeText);
+        for (const [index, code] of runnableCodes.entries()) {
+          updateStatus('running', code.codeText);
+          setCodeVisualState(code.id, 'trying');
 
-        if (!parsedCode) {
-          setCodeVisualState(code.id, 'failure');
+          const parsedCode = parseHuntCode(code.codeText);
+
+          if (!parsedCode) {
+            setCodeVisualState(code.id, 'failure');
+          } else {
+            const result = await autofillCodeOnPage(
+              activeTabId,
+              code.codeText,
+              runRequestId,
+            );
+
+            if (runRequestId !== runRequestIdRef.current) {
+              clearRunningState();
+              return;
+            }
+
+            if (result.reason === 'canceled') {
+              clearRunningState();
+              return;
+            }
+
+            if (result.success) {
+              successfulCode = code.codeText;
+              setCodeVisualState(code.id, 'success');
+              updateStatus('success', code.codeText);
+              break;
+            }
+
+            setCodeVisualState(code.id, 'failure');
+          }
 
           if (index < runnableCodes.length - 1) {
             updateStatus('trying-next', code.codeText);
-            continue;
           }
+        }
 
+        if (
+          !successfulCode &&
+          isLooping &&
+          runRequestId === runRequestIdRef.current
+        ) {
+          updateStatus('looping');
+          await sleep(500);
+        } else if (!successfulCode) {
           break;
         }
+      }
 
-        const result = await autofillCodeOnPage(
-          activeTabId,
-          code.codeText,
-          runRequestId,
-        );
-
-        if (runRequestId !== runRequestIdRef.current) {
-          clearRunningState();
-          return;
-        }
-
-        if (result.reason === 'canceled') {
-          clearRunningState();
-          return;
-        }
-
-        if (result.success) {
-          successfulCode = code.codeText;
-          setCodeVisualState(code.id, 'success');
-          updateStatus('success', code.codeText);
-          break;
-        }
-
-        setCodeVisualState(code.id, 'failure');
-
-        if (index < runnableCodes.length - 1) {
-          updateStatus('trying-next', code.codeText);
-        }
+      if (runRequestId !== runRequestIdRef.current) {
+        return;
       }
 
       updateStatus(
@@ -874,7 +888,7 @@ export function AutoFillerPage() {
                   disabled={isEditing && !isRunning}
                   icon={
                     isRunning ? (
-                      <RunningSpinnerIcon />
+                      <HuntIcon name='pause' />
                     ) : (
                       <HuntIcon
                         name='play'
@@ -883,10 +897,10 @@ export function AutoFillerPage() {
                     )
                   }
                   size='medium'
-                  tone={isRunning ? 'secondary' : 'primary'}
+                  tone={isRunning ? 'destructive' : 'primary'}
                   onClick={isRunning ? handlePauseProgram : handleRunProgram}
                 >
-                  {isRunning ? 'Running...' : 'Run Program'}
+                  {isRunning ? 'Stop' : 'Run Program'}
                 </HuntButton>
                 <HuntButton
                   aria-label='Reset program'
@@ -933,6 +947,17 @@ export function AutoFillerPage() {
                 />
               </div>
             </div>
+            <label className='mb-4 flex w-fit cursor-pointer items-center gap-2 text-[12px] font-semibold text-hunt-text'>
+              <input
+                checked={isLooping}
+                className='peer sr-only'
+                disabled={isEditing || isRunning}
+                onChange={(event) => setIsLooping(event.target.checked)}
+                type='checkbox'
+              />
+              <span className='relative h-5 w-9 rounded-full bg-hunt-border transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-hunt-blueInk peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-hunt-blue/30 peer-disabled:cursor-not-allowed peer-disabled:opacity-50' />
+              Loop
+            </label>
             <p
               role='status'
               aria-live='polite'
